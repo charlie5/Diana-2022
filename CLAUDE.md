@@ -17,20 +17,35 @@ The repository is at the **design stage**. There is **no source code, build syst
 
 ## The IDL dialect — this is a frequent mistake
 
-The IR is specified in the **Wulf/Lamb/Nestor IDL** (an abstract-data-type / specification language), **not CORBA IDL**. Do not write OO `interface { field; }` syntax. Use:
+The IR is specified in the **Wulf/Lamb/Nestor IDL** (an abstract-data-type / specification language), **not CORBA IDL**. Do not write OO `interface { field; }` syntax. The notation below is taken from the Rev 3 manual §1.4 (`references/DIANA_Rev3_ADA128232.pdf`, doc pp. 21–30):
 
-- `Class ::= Variant_A | Variant_B | ...;` — a *strict class* (tagged union). A strict class made entirely of attribute-less node types acts as an enumeration.
-- `Node => Attribute_Name : Type;` — declares an attribute on a node type.
-- `seq of <Type>` / `set of <Type>` — composite/collection attributes.
-- `*_Void ::= <Type> | Void;` with `Void =>;` — the idiom for optional attributes.
-- A structure header: `structure DIANA_2022 root Compilation_Unit is ... end;`
-- Discriminated Ada records map to a strict class: the discriminant is an attribute on the parent class, each variant is a node type, a `null` variant is an attribute-less node type. (Optional `assert` clauses can tie a variant to a discriminant value.)
+- Reserved words are capitalized. The whole IR is wrapped in one structure: `Structure DIANA_2022 Root Compilation_Unit Is  -- rules  End`.
+- **Class** (`::=`): `EXP ::= leaf | tree ;` — the RHS is *only* an alternation of class/node names (no concatenation of items). Class names defined via `::=` must be acyclic (form a DAG). Extra `::=` rules for the same class add alternatives. Class names never appear in actual trees; only node names do.
+- **Node** (`=>`): `tree => op: OPERATOR, left: EXP, right: EXP ;` — attributes are `name: TYPE`, comma-separated, **order-independent**. Extra `=>` rules for the same node *add* attributes (they are not alternatives). An attribute-less node `void => ;` acts like an enumeration literal.
+- **Attribute types:** the basic types `Boolean`, `Integer`, `Rational`, `String`, `Seq Of T`; a `<name>` reference to another node or class; or a **private type** declared `Type Source_Position;` (used for implementation-specific data like source positions).
+- **Sequence idiom:** a name ending in `_S` (class) / `_s` (node) is always a sequence of what precedes the `_` — e.g. `FOO_S => foo_s ;` then `foo_s => as_list: Seq Of FOO ;`.
+- **Optional idiom:** a class ending in `_VOID` is always `FOO_VOID => FOO | void ;` with `void => ;`.
+- **Refinement / renaming:** IDL has native `Structure X Refines Y Is … End` and `Structure X Renames Y Is … End` forms, plus representation clauses `For MyType Use MyPackage;` (internal) and `For MyType Use External ExternType;` (external).
+- Discriminated Ada records map to a class: the discriminant is an attribute on the parent class, each variant is a node type, a `null` variant is an attribute-less node type.
+
+### The four attribute prefixes (DIANA's attribute classification)
+
+Every DIANA attribute is prefixed to mark which of four kinds it is (Rev 3 §1.4.4 / §1.3):
+
+- `as_` — **structural** (defines the abstract syntax tree; names mirror the Ada Formal Definition, prefixed with `as_`).
+- `lx_` — **lexical** (source form: identifier spelling, source position — e.g. `lx_srcpos`).
+- `sm_` — **semantic** (results of semantic analysis: type, overload resolution — e.g. `sm_type_spec`).
+- `cd_` — **code** (there is essentially one: representation info the back end must observe).
+
+Convention is to list a node's attributes grouped structural → lexical → semantic → code, in that order.
 
 ## Style rules (from `Initial_instructions.md`)
 
 - **Identifiers:** `Camel_Case` with underscores — initial capitals, underscore-separated, **full words, no abbreviations** (`Object_Declaration`, not `object_decl`; `Subprogram_Body`, not `subp_body`). All-capital acronyms stay capitalized.
-- **Provenance comments:** annotate constructs with where they come from — DIANA RM vs the Ada RM.
-- Expose the shortened DIANA Rev 3/4 node names via **`RENAMES`**; the full-word names are canonical.
+- **Provenance comments:** annotate constructs with where they come from — DIANA RM vs the Ada RM. Rev 3 already did this: each rule group opens with a comment citing the corresponding Ada LRM section. Mirror that convention (citing the Ada 2022 RM), and add a DIANA-RM citation where a node descends from the historical design.
+- Expose the shortened DIANA Rev 3/4 node names via **`RENAMES`** — use IDL's native `Structure … Renames … Is … End` form for this; the full-word `Camel_Case` names are canonical.
+
+Note the **naming-style shift from original DIANA**: Rev 3/4 use ALL-UPPER-CASE class names (`DECL`, `EXP`, `STM`, `TYPE_SPEC`, `DEF`), all-lower-case node names (`tree`, `constant`, `var`), and prefixed lower-case attributes (`as_exp`, `sm_type_spec`, `lx_srcpos`). DIANA_2022's canonical names are `Camel_Case` full words instead; the historical short/lower-case names live behind the `Renames` compatibility layer. **Open design question:** whether the `as_`/`lx_`/`sm_`/`cd_` attribute-prefix scheme is kept as-is, re-cased (`As_`/`Lx_`/`Sm_`/`Cd_`), or spelled out — not yet decided; preserve the four-way *classification* regardless of spelling.
 
 ## Core design decisions (non-obvious; keep consistent)
 
@@ -40,6 +55,7 @@ These are deliberate modeling choices that span the whole IR — preserve them:
 - **Collapse semantically-equivalent Ada forms into one node.** Example: `return 0;`, `return Value : Integer := 0;`, and the full extended return are all one return construct.
 - **Aspects and attribute-definition clauses unify** into a single `Semantic_Property` node (`with Size => 8` and `for T'Size use 8;` are the same semantic property). The node always carries a `Source_Position` and an `Origin` note (`From_Aspect | From_Attribute_Clause`) recording the syntactic source. Attach semantic properties to the declarations/types/subprograms/objects that can legally carry them.
 - **The generic formal system mirrors the type system** — formal scalar/composite/access/interface/private types parallel their non-formal counterparts so actuals line up structurally with formals.
+- **Name binding is the symbol table.** Each declared entity has one *defining occurrence* (`DEF_ID` node) holding all its semantic attributes; *used occurrences* point back via `sm_defn` (`sm_operator` for built-in ops). Multiple declaration points (incomplete/private types, deferred constants, spec+body) are linked by `sm_first`. The interpretive harness's name resolution and its merging of separately-compiled units both hinge on this `sm_defn`/`sm_first` model. Calls and overloadable operators share one `function_call` node (with `lx_prefix` recording infix vs. prefix).
 
 ## Test harness requirements
 
@@ -49,7 +65,12 @@ When the interpretive harness is built, it must:
 
 ## Reference sources
 
+In-repo (git-ignored; download locally if absent):
+- `references/DIANA_Rev3_ADA128232.pdf` — the public-domain DIANA Rev 3 manual (scanned). Printed page N ≈ PDF page N+9. Useful sections: §1.3–1.4 notation (pp. 17–30), §2 domain definition (pp. 31–78), §3.3 name binding (pp. 85–88), Appendix IV summary (pp. 171–184), Appendix V names (pp. 185–192), Appendix VI attributes (pp. 193–198).
+- `references/DIANA_Rev3_distilled.md` — clean text distillation of the Rev 3 taxonomy + name-binding model (the historical vocabulary for the `Renames` compat layer). Prefer this over re-reading the scan.
+
 Authoritative external specs (not in-repo; fetch when needed):
+- Canonical DIANA reference: Goos, G., Wulf, W.A., Evans, A., Butler, K.J. (eds.), *DIANA: An Intermediate Language for Ada*, LNCS 161, Springer-Verlag, 1983. (Copyrighted; use the public-domain DTIC Rev 3/4 reports below as the working source unless a legitimate copy is supplied locally.)
 - Ada 2022 RM: http://www.ada-auth.org/standards/22rm_w_amd1/RM-Final.pdf
 - Ada 83 Standard / Rationale: http://archive.adaic.com/standards/83lrm/html/ , http://archive.adaic.com/standards/83rat/html/
 - DIANA Rev 3: https://apps.dtic.mil/sti/pdfs/ADA128232.pdf

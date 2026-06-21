@@ -3,3 +3,6 @@
 
 # Ada Library Information
 *.ali
+
+# Large reference PDFs (public-domain DTIC reports; fetch locally as needed)
+references/*.pdf
