@@ -1001,12 +1001,130 @@ Structure DIANA_2022 Root Diana_Node Is
     -- =======================================================================
 
     Semantic_Property =>
-          Property_Name  : Name,                -- structural (aspect/attribute identifier)
-          Property_Value : Object_Definition,   -- structural (Void = boolean aspect, defaults True)
-          Origin         : Property_Origin;     -- structural
+          Identity   : Property_Identity,       -- structural (which property; see below)
+          Class_Wide : Boolean,                 -- structural (the 'Class form: Pre'Class, ...)
+          Value      : Property_Value,          -- structural (Void = boolean aspect, defaults True)
+          Origin     : Property_Origin;         -- structural (aspect vs attribute clause)
     Property_Origin ::= From_Aspect | From_Attribute_Clause;
-    From_Aspect          => ;
+    From_Aspect           => ;
     From_Attribute_Clause => ;
+
+    -- A property value is usually an expression; Contract_Cases is structured;
+    -- boolean aspects (Pack, Atomic, Inline, ...) carry Void and default to True.
+    Property_Value ::= Expression | Contract_Case_List | Void;
+    Contract_Case_List =>                       -- [Ada 22 RM 6.1.1]
+          Cases : Contract_Case_S;
+    Contract_Case =>
+          Guard       : Object_Definition,      -- the condition; Void = "others"
+          Consequence : Expression;
+
+    -- Recognized aspects / attribute-definition properties.  "Aspect_X" denotes
+    -- the semantic property X however it was written (aspect specification OR
+    -- attribute_definition clause); Origin records the syntactic form and
+    -- Class_Wide selects the 'Class variant.  Implementation-defined or
+    -- unrecognized properties use Other_Property (which keeps the source name).
+    Property_Identity ::=
+          Contract_Aspect
+        | Representation_Aspect
+        | Interfacing_Aspect
+        | Categorization_Aspect
+        | Concurrency_Aspect
+        | Iteration_Aspect
+        | Literal_Aspect
+        | Stream_Aspect
+        | Other_Property;
+
+    Other_Property =>
+          Property_Name : Name;                 -- the source aspect/attribute name
+
+    -- Assertions & contracts    [Ada 22 RM 13.1.1, 6.1.1, 6.1.2, 7.3.2, 7.3.3]
+    Contract_Aspect ::=
+          Aspect_Pre | Aspect_Post | Aspect_Type_Invariant
+        | Aspect_Predicate | Aspect_Static_Predicate | Aspect_Dynamic_Predicate
+        | Aspect_Contract_Cases | Aspect_Default_Initial_Condition
+        | Aspect_Subprogram_Variant            -- Ada 2022
+        | Aspect_Global                        -- Ada 2022
+        | Aspect_Depends
+        | Aspect_Relaxed_Initialization        -- Ada 2022
+        | Aspect_Stable_Properties;            -- Ada 2022
+    Aspect_Pre              => ;   Aspect_Post                    => ;
+    Aspect_Type_Invariant   => ;   Aspect_Predicate               => ;
+    Aspect_Static_Predicate => ;   Aspect_Dynamic_Predicate       => ;
+    Aspect_Contract_Cases   => ;   Aspect_Default_Initial_Condition => ;
+    Aspect_Subprogram_Variant => ; Aspect_Global                  => ;
+    Aspect_Depends          => ;   Aspect_Relaxed_Initialization   => ;
+    Aspect_Stable_Properties => ;
+
+    -- Representation                                   [Ada 22 RM 13.1 .. 13.3]
+    Representation_Aspect ::=
+          Aspect_Size | Aspect_Object_Size | Aspect_Component_Size
+        | Aspect_Alignment | Aspect_Bit_Order | Aspect_Scalar_Storage_Order
+        | Aspect_Pack | Aspect_Address | Aspect_Storage_Size
+        | Aspect_Storage_Pool | Aspect_Default_Storage_Pool
+        | Aspect_Small | Aspect_Machine_Radix
+        | Aspect_Default_Value | Aspect_Default_Component_Value
+        | Aspect_Atomic | Aspect_Volatile
+        | Aspect_Atomic_Components | Aspect_Volatile_Components
+        | Aspect_Independent | Aspect_Independent_Components
+        | Aspect_External_Tag | Aspect_Discard_Names;
+    Aspect_Size            => ;   Aspect_Object_Size          => ;
+    Aspect_Component_Size  => ;   Aspect_Alignment            => ;
+    Aspect_Bit_Order       => ;   Aspect_Scalar_Storage_Order => ;
+    Aspect_Pack            => ;   Aspect_Address              => ;
+    Aspect_Storage_Size    => ;   Aspect_Storage_Pool         => ;
+    Aspect_Default_Storage_Pool => ; Aspect_Small             => ;
+    Aspect_Machine_Radix   => ;   Aspect_Default_Value        => ;
+    Aspect_Default_Component_Value => ; Aspect_Atomic          => ;
+    Aspect_Volatile        => ;   Aspect_Atomic_Components     => ;
+    Aspect_Volatile_Components => ; Aspect_Independent         => ;
+    Aspect_Independent_Components => ; Aspect_External_Tag      => ;
+    Aspect_Discard_Names   => ;
+
+    -- Interfacing                                            [Ada 22 RM B.1]
+    Interfacing_Aspect ::=
+          Aspect_Convention | Aspect_Import | Aspect_Export
+        | Aspect_External_Name | Aspect_Link_Name;
+    Aspect_Convention => ;   Aspect_Import      => ;   Aspect_Export => ;
+    Aspect_External_Name => ; Aspect_Link_Name  => ;
+
+    -- Categorization & subprogram                       [Ada 22 RM 10.2.1, 6.3]
+    Categorization_Aspect ::=
+          Aspect_Pure | Aspect_Preelaborate | Aspect_Elaborate_Body
+        | Aspect_Remote_Types | Aspect_Remote_Call_Interface | Aspect_Shared_Passive
+        | Aspect_Inline | Aspect_No_Return;
+    Aspect_Pure => ;   Aspect_Preelaborate => ;   Aspect_Elaborate_Body => ;
+    Aspect_Remote_Types => ; Aspect_Remote_Call_Interface => ; Aspect_Shared_Passive => ;
+    Aspect_Inline => ; Aspect_No_Return => ;
+
+    -- Concurrency & real-time                              [Ada 22 RM D, C.3]
+    Concurrency_Aspect ::=
+          Aspect_Priority | Aspect_Interrupt_Priority | Aspect_CPU
+        | Aspect_Dispatching_Domain | Aspect_Attach_Handler
+        | Aspect_Interrupt_Handler | Aspect_Exclusive_Functions;
+    Aspect_Priority => ;   Aspect_Interrupt_Priority => ;   Aspect_CPU => ;
+    Aspect_Dispatching_Domain => ; Aspect_Attach_Handler => ;
+    Aspect_Interrupt_Handler => ; Aspect_Exclusive_Functions => ;
+
+    -- Iteration & indexing                       [Ada 22 RM 4.1.6, 5.5.1, 4.3.5]
+    Iteration_Aspect ::=
+          Aspect_Constant_Indexing | Aspect_Variable_Indexing
+        | Aspect_Default_Iterator | Aspect_Iterator_Element
+        | Aspect_Iterator_View | Aspect_Aggregate | Aspect_Iterable;
+    Aspect_Constant_Indexing => ; Aspect_Variable_Indexing => ;
+    Aspect_Default_Iterator => ; Aspect_Iterator_Element => ;
+    Aspect_Iterator_View => ; Aspect_Aggregate => ; Aspect_Iterable => ;
+
+    -- User-defined literals                                 [Ada 22 RM 4.2.1]
+    Literal_Aspect ::=
+          Aspect_Integer_Literal | Aspect_Real_Literal | Aspect_String_Literal;
+    Aspect_Integer_Literal => ; Aspect_Real_Literal => ; Aspect_String_Literal => ;
+
+    -- Streams & image                                  [Ada 22 RM 13.13.2, 4.10]
+    Stream_Aspect ::=
+          Aspect_Read | Aspect_Write | Aspect_Input | Aspect_Output
+        | Aspect_Put_Image;                    -- Put_Image: Ada 2022
+    Aspect_Read => ; Aspect_Write => ; Aspect_Input => ; Aspect_Output => ;
+    Aspect_Put_Image => ;
 
     -- Representation clauses that are NOT aspect-equivalent (record layout, ...)
     Representation_Clause ::=                    -- [Ada 22 RM 13]
@@ -1108,6 +1226,7 @@ Structure DIANA_2022 Root Diana_Node Is
         | Select_Alternative_S
         | Parallel_Arm_S
         | Protected_Operation_S
+        | Contract_Case_S
         | Component_S
         | Variant_S
         | Discriminant_S
@@ -1137,6 +1256,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Select_Alternative_S     => List : Seq Of Select_Alternative;
     Parallel_Arm_S           => List : Seq Of Parallel_Arm;
     Protected_Operation_S    => List : Seq Of Protected_Operation;
+    Contract_Case_S          => List : Seq Of Contract_Case;
     Component_S          => List : Seq Of Component;
     Variant_S            => List : Seq Of Variant;
     Discriminant_S       => List : Seq Of Discriminant;
