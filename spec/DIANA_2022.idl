@@ -464,10 +464,13 @@ Structure DIANA_2022 Root Diana_Node Is
         | Labeled_Statement
         | Raise_Statement
         | Delay_Statement
+        | Accept_Statement          -- [Ada 22 RM 9.5.2]
+        | Entry_Call                -- [Ada 22 RM 9.5.3]
+        | Requeue_Statement         -- [Ada 22 RM 9.5.4]
+        | Select_Statement          -- [Ada 22 RM 9.7]
+        | Abort_Statement           -- [Ada 22 RM 9.8]
+        | Parallel_Block            -- [Ada 22 RM 5.6.1]
         | Pragma;
-        -- TODO(2022): Accept_Statement, Select_Statement, Entry_Call,
-        --   Abort_Statement, Requeue_Statement, parallel loop / parallel block,
-        --   Terminate_Alternative
 
     Null_Statement => ;
 
@@ -483,8 +486,9 @@ Structure DIANA_2022 Root Diana_Node Is
     Goto_Statement =>
           Target : Name;
 
-    Delay_Statement =>                          -- TODO(2022): delay until
-          Duration : Expression;
+    Delay_Statement =>                          -- [Ada 22 RM 9.6]
+          Expression : Expression,
+          Until_Form : Boolean;                 -- "delay until" (absolute) vs "delay" (relative)
 
     Labeled_Statement =>
           Labels    : Defining_Name_S,
@@ -513,16 +517,19 @@ Structure DIANA_2022 Root Diana_Node Is
     Loop_Statement =>
           Iteration  : Iteration,
           Statements : Statement_S;
-    Iteration ::=                               -- TODO(2022): iterator (for X of ...), parallel
+    Iteration ::=
           No_Iteration
         | While_Loop
         | For_Loop;
     While_Loop =>
           Condition : Expression;
-    For_Loop =>
-          Parameter      : Defining_Name,
-          Discrete_Range : Discrete_Range,
-          Reverse_Order  : Boolean;
+    For_Loop =>                                 -- "for" / "for of" loops, optionally parallel
+          Iterator : Iterator_Specification,    -- range or container; carries reverse + filter
+          Parallel : Parallel_Specification;    -- sequential, or parallel with chunking  [Ada 22 RM 5.5]
+    Parallel_Specification ::= Sequential | Parallel_Chunked;
+    Sequential       => ;
+    Parallel_Chunked =>                         -- "parallel (chunk_specification) for ..."
+          Chunk_Specification : Object_Definition;  -- Void, a count, or a chunk discrete-range
 
     Block_Statement =>
           Declarations : Item_S,
@@ -533,8 +540,81 @@ Structure DIANA_2022 Root Diana_Node Is
           Loop_Name : Name,                     -- Void if unnamed
           Condition : Object_Definition;        -- Void if no "when"
 
-    Raise_Statement =>                          -- Void for re-raise; TODO(2022): raise ... with msg
-          Exception_Name : Name;
+    Raise_Statement =>                          -- [Ada 22 RM 11.3]
+          Exception_Name : Name,                -- Void for a re-raise ("raise;")
+          Message        : Object_Definition;   -- Void if no "with" message
+
+
+    -- =======================================================================
+    -- 9. Tasking and synchronization statements              [Ada 22 RM 9]
+    --   (Entry declarations reuse Subprogram_Declaration with an Entry_Header;
+    --    task/protected type specs are Type_Specs — see the type section.)
+    -- =======================================================================
+
+    Accept_Statement =>                         -- [Ada 22 RM 9.5.2]
+          Entry_Name         : Name,            -- the accepted entry
+          Entry_Index        : Object_Definition, -- Void unless an entry-family member
+          Parameters         : Parameter_S,
+          Handled_Statements : Statement_S,     -- the "do ... end"; empty if absent
+          Handlers           : Alternative_S;   -- exception handlers in the accept body
+
+    Entry_Call =>                               -- [Ada 22 RM 9.5.3]
+          Prefix             : Name,            -- the called entry (indexed for a family)
+          Actuals            : Association_S,
+          Normalized_Actuals : Expression_S;    -- semantic
+
+    Requeue_Statement =>                        -- [Ada 22 RM 9.5.4]
+          Target     : Name,                    -- the entry to requeue to
+          With_Abort : Boolean;
+
+    Abort_Statement =>                          -- [Ada 22 RM 9.8]
+          Tasks : Name_S;
+
+    -- 9.7 Select statements (all four forms)
+    Select_Statement ::=
+          Selective_Accept
+        | Conditional_Entry_Call
+        | Timed_Entry_Call
+        | Asynchronous_Select;
+
+    Selective_Accept =>                         -- [Ada 22 RM 9.7.1]
+          Alternatives    : Select_Alternative_S,
+          Else_Statements : Statement_S;        -- empty if no "else" part
+    Select_Alternative ::=
+          Accept_Alternative
+        | Delay_Alternative
+        | Terminate_Alternative
+        | Pragma;
+    Accept_Alternative =>
+          Guard            : Object_Definition, -- "when C =>"; Void if no guard
+          Accept_Statement : Accept_Statement,
+          Statements       : Statement_S;       -- statements after the accept
+    Delay_Alternative =>
+          Guard           : Object_Definition,
+          Delay_Statement : Delay_Statement,
+          Statements      : Statement_S;
+    Terminate_Alternative =>
+          Guard : Object_Definition;            -- "when C => terminate;"
+
+    Conditional_Entry_Call =>                   -- [Ada 22 RM 9.7.2]
+          Entry_Call      : Entry_Call,
+          Call_Statements : Statement_S,        -- statements after the call
+          Else_Statements : Statement_S;
+    Timed_Entry_Call =>                         -- [Ada 22 RM 9.7.3]
+          Entry_Call       : Entry_Call,
+          Call_Statements  : Statement_S,
+          Delay_Statement  : Delay_Statement,
+          Delay_Statements : Statement_S;
+    Asynchronous_Select =>                      -- [Ada 22 RM 9.7.4]
+          Trigger               : Statement,    -- an entry call or a delay statement
+          Triggering_Statements : Statement_S,
+          Abortable_Statements  : Statement_S;
+
+    -- 5.6.1 Parallel block statement
+    Parallel_Block =>                           -- "parallel do S1 and S2 and ... end do;"
+          Arms : Parallel_Arm_S;
+    Parallel_Arm =>
+          Statements : Statement_S;             -- one parallel sequence of statements
 
 
     -- =======================================================================
@@ -763,22 +843,46 @@ Structure DIANA_2022 Root Diana_Node Is
     Subunit =>
           Parent : Name,
           Body   : Subunit_Body;
-    Subunit_Body ::= Subprogram_Body | Package_Body | Task_Body;
+    Subunit_Body ::= Subprogram_Body | Package_Body | Task_Body | Protected_Body;
     Renaming =>
           Renamed : Name;
     Location ::= Expression | Void;
     Language_Binding =>
           Convention : Argument_Name;
 
-    Task_Declaration =>                         -- TODO(2022): full task / protected
+    -- Tasks  [Ada 22 RM 9.1]  (single tasks and task types; task TYPES are also
+    -- Type_Specs — see Task_Type. Entry declarations live in the spec's
+    -- Declarations as Subprogram_Declarations with an Entry_Header.)
+    Task_Declaration =>
           Name       : Defining_Name,
           Definition : Task_Definition;
     Task_Definition ::= Task_Specification | Void;
     Task_Specification =>
-          Declarations : Declaration_S;
+          Declarations : Declaration_S;         -- entry declarations + representation items
     Task_Body =>
           Name : Defining_Name,
           Body : Block_Or_Stub;
+
+    -- Protected units  [Ada 22 RM 9.4]  (protected TYPES are Type_Specs — see
+    -- Protected_Type. The body holds protected subprograms and entry bodies.)
+    Protected_Body =>
+          Name       : Defining_Name,
+          Operations : Protected_Operation_S;
+    Protected_Operation ::=
+          Subprogram_Declaration
+        | Subprogram_Body
+        | Entry_Body
+        | Pragma;
+    Entry_Body =>                               -- [Ada 22 RM 9.5.2]
+          Name         : Defining_Name,
+          Family_Index : Entry_Index_Specification, -- Void unless an entry family
+          Parameters   : Parameter_S,
+          Barrier      : Expression,            -- the "when <barrier>" condition
+          Body         : Block_Statement;       -- declarations + statements + handlers
+    Entry_Index_Specification ::= Entry_Index_Definition | Void;
+    Entry_Index_Definition =>                   -- "(for I in discrete_range)"
+          Parameter      : Defining_Name,
+          Discrete_Range : Discrete_Range;
 
 
     -- =======================================================================
@@ -1001,6 +1105,9 @@ Structure DIANA_2022 Root Diana_Node Is
         | Conditional_Clause_S
         | Expression_Clause_S
         | Expression_Alternative_S
+        | Select_Alternative_S
+        | Parallel_Arm_S
+        | Protected_Operation_S
         | Component_S
         | Variant_S
         | Discriminant_S
@@ -1014,7 +1121,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Context_Element_S    => List : Seq Of Context_Element;
     Declaration_S        => List : Seq Of Declaration;
     Item_S               => List : Seq Of Item;
-    Item ::= Declaration | Subprogram_Body | Package_Body | Task_Body;
+    Item ::= Declaration | Subprogram_Body | Package_Body | Task_Body | Protected_Body;
     Defining_Name_S      => List : Seq Of Defining_Name;
     Name_S               => List : Seq Of Name;
     Expression_S         => List : Seq Of Expression;
@@ -1027,6 +1134,9 @@ Structure DIANA_2022 Root Diana_Node Is
     Conditional_Clause_S => List : Seq Of Conditional_Clause;
     Expression_Clause_S      => List : Seq Of Expression_Clause;
     Expression_Alternative_S => List : Seq Of Expression_Alternative;
+    Select_Alternative_S     => List : Seq Of Select_Alternative;
+    Parallel_Arm_S           => List : Seq Of Parallel_Arm;
+    Protected_Operation_S    => List : Seq Of Protected_Operation;
     Component_S          => List : Seq Of Component;
     Variant_S            => List : Seq Of Variant;
     Discriminant_S       => List : Seq Of Discriminant;

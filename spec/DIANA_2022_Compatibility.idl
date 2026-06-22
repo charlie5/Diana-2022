@@ -159,18 +159,29 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     raise            Renames Raise_Statement;
     delay            Renames Delay_Statement;
     code             Renames Code_Statement;
+    accept           Renames Accept_Statement;
+    entry_call       Renames Entry_Call;
+    abort            Renames Abort_Statement;
+    select           Renames Selective_Accept;
+    cond_entry       Renames Conditional_Entry_Call;
+    timed_entry      Renames Timed_Entry_Call;
+    terminate        Renames Terminate_Alternative;
     COND_CLAUSE      Renames Conditional_Clause;
     cond_clause      Renames Conditional_Clause;
     ALTERNATIVE      Renames Alternative;
     alternative      Renames Case_Alternative;
     ITERATION        Renames Iteration;
     while            Renames While_Loop;
-    -- COLLAPSED: Rev 3 `for` and `reverse` both map to For_Loop
-    --   (direction carried by For_Loop.Reverse_Order : Boolean).
+    -- COLLAPSED: Rev 3 `for` and `reverse` both map to For_Loop, whose Iterator
+    --   (a Range_Iterator/Container_Iterator) carries direction, "of", and the
+    --   Ada 2022 "when" filter.
     -- COLLAPSED: the three Ada return forms (return;, return X;, extended
     --   return) all map to the single Return_Statement.
     -- RESTRUCTURED: Rev 3 `named_stm` (named loop/block) — naming is handled by
     --   Loop_Block_Name + the labeling mechanism; no separate wrapper node.
+    -- RESTRUCTURED: Rev 3 `select_clause`/SELECT_CLAUSE (one guarded node) splits
+    --   into Accept_Alternative / Delay_Alternative / Terminate_Alternative under
+    --   Select_Alternative; Rev 3 `terminate` (a STM) becomes Terminate_Alternative.
 
 
     -- =======================================================================
