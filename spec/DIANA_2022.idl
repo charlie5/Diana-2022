@@ -250,15 +250,19 @@ Structure DIANA_2022 Root Diana_Node Is
         | String_Literal
         | Null_Literal
         | Aggregate
+        | Delta_Aggregate           -- (X with delta ...)         [Ada 22 RM 4.3.4]
+        | Container_Aggregate       -- [ ... ] container aggregate [Ada 22 RM 4.3.5]
         | Allocator
         | Qualified_Expression
         | Type_Conversion
         | Parenthesized_Expression
         | Short_Circuit
-        | Membership;
-        -- TODO(2022): Conditional_Expression (if/case expr), Quantified_Expression,
-        --   Declare_Expression, Reduction (parallel), Delta_Aggregate,
-        --   Container_Aggregate
+        | Membership
+        | Conditional_Expression    -- if-/case-expression         [Ada 22 RM 4.5.7]
+        | Quantified_Expression     -- for all / for some          [Ada 22 RM 4.5.8]
+        | Declare_Expression        -- (declare ... begin ...)      [Ada 22 RM 4.5.9]
+        | Reduction_Expression      -- 'Reduce / 'Parallel_Reduce   [Ada 22 RM 4.5.10]
+        | Raise_Expression;         -- (raise E with msg)          [Ada 22 RM 4.4]
 
     -- hoisted to all expressions
     Expression =>
@@ -293,8 +297,9 @@ Structure DIANA_2022 Root Diana_Node Is
         | Constrained_Spec;
 
     Aggregate =>
-          Associations : Association_S,         -- structural
-          Normalized   : Expression_S;          -- semantic
+          Associations    : Association_S,      -- structural
+          Square_Brackets : Boolean,            -- lexical  ([ ] vs ( ) array aggregate)
+          Normalized      : Expression_S;       -- semantic
 
     Short_Circuit =>
           Left     : Expression,
@@ -309,6 +314,70 @@ Structure DIANA_2022 Root Diana_Node Is
     Membership_Op ::= In_Set | Not_In_Set;
     Type_Or_Range ::= Range | Name;            -- TODO(2022): membership choice lists
 
+    -- ----- Ada 2012 / 2022 expression forms ----------------------------------
+
+    -- Conditional expressions                               [Ada 22 RM 4.5.7]
+    Conditional_Expression ::= If_Expression | Case_Expression;
+    If_Expression =>
+          Clauses : Expression_Clause_S;
+    Expression_Clause =>
+          Condition : Object_Definition,        -- Void condition = the "else" result
+          Result    : Expression;
+    Case_Expression =>
+          Selector     : Expression,
+          Alternatives : Expression_Alternative_S;
+    Expression_Alternative =>
+          Choices : Choice_S,
+          Result  : Expression;
+
+    -- Quantified expressions                                [Ada 22 RM 4.5.8]
+    Quantified_Expression =>
+          Quantifier : Quantifier_Kind,
+          Iterator   : Iterator_Specification,
+          Predicate  : Expression;
+    Quantifier_Kind ::= For_All | For_Some;
+
+    -- Iterator specifications — shared by quantified expressions and the
+    -- iterated associations in aggregates (loops may adopt this later).
+    -- Ada 2022 adds the "when" iterator filter.          [Ada 22 RM 5.5, 4.3.3]
+    Iterator_Specification ::= Range_Iterator | Container_Iterator;
+    Range_Iterator =>                           -- "X in [reverse] discrete_range"
+          Parameter      : Defining_Name,
+          Discrete_Range : Discrete_Range,
+          Reverse_Order  : Boolean,
+          Filter         : Object_Definition;   -- Void if no "when" filter
+    Container_Iterator =>                        -- "X of [reverse] iterable"
+          Parameter     : Defining_Name,
+          Iterable      : Expression,
+          Reverse_Order : Boolean,
+          Filter        : Object_Definition;    -- Void if no "when" filter
+
+    -- Declare expressions                                   [Ada 22 RM 4.5.9]
+    Declare_Expression =>
+          Declarations : Declaration_S,         -- object / object-renaming declarations
+          Result       : Expression;
+
+    -- Reduction expressions ('Reduce / 'Parallel_Reduce)   [Ada 22 RM 4.5.10]
+    Reduction_Expression =>
+          Value_Sequence : Expression,          -- an array, iterable, or [ ... ] sequence
+          Reducer        : Name,                -- the combiner subprogram
+          Initial_Value  : Expression,
+          Is_Parallel    : Boolean;             -- 'Parallel_Reduce vs 'Reduce
+
+    -- Raise expressions                                      [Ada 22 RM 4.4]
+    Raise_Expression =>
+          Exception_Name : Name,
+          Message        : Object_Definition;   -- Void if no "with" message
+
+    -- Delta aggregates                                      [Ada 22 RM 4.3.4]
+    Delta_Aggregate =>
+          Base   : Expression,                  -- the base record/array value
+          Deltas : Association_S;               -- component => value overrides
+
+    -- Container aggregates ( [ ... ] , Aggregate aspect)   [Ada 22 RM 4.3.5]
+    Container_Aggregate =>
+          Associations : Association_S;         -- positional / keyed / iterated
+
     -- 4.1 names
     Name ::=
           Used_Name
@@ -322,7 +391,8 @@ Structure DIANA_2022 Root Diana_Node Is
         | Dereference
         | Attribute_Reference
         | Attribute_Call
-        | Function_Call;
+        | Function_Call
+        | Target_Name;              -- "@" in an assignment RHS    [Ada 22 RM 5.2.1]
 
     -- semantic links (the symbol-table back-references)            [DIANA]
     Used_Name      => Definition       : Defining_Occurrence;  -- semantic
@@ -362,12 +432,18 @@ Structure DIANA_2022 Root Diana_Node Is
           Is_Prefix_Notation : Boolean,         -- lexical (infix vs. prefix; conformance)
           Normalized_Actuals : Expression_S;    -- semantic
 
+    Target_Name => ;                            -- "@" : the assignment target  [Ada 22 RM 5.2.1]
+
     Association ::=                             -- parameter / aggregate associations
           Expression
-        | Named_Association;
+        | Named_Association
+        | Iterated_Association;
     Named_Association =>
           Choices : Choice_S,
           Actual  : Expression;
+    Iterated_Association =>                      -- "for I in R => E" / "for E of A => f(E)"  [Ada 22 RM 4.3.3]
+          Iterator : Iterator_Specification,
+          Result   : Expression;
 
 
     -- =======================================================================
@@ -923,6 +999,8 @@ Structure DIANA_2022 Root Diana_Node Is
         | Alternative_S
         | Choice_S
         | Conditional_Clause_S
+        | Expression_Clause_S
+        | Expression_Alternative_S
         | Component_S
         | Variant_S
         | Discriminant_S
@@ -947,6 +1025,8 @@ Structure DIANA_2022 Root Diana_Node Is
     Choice ::= Expression | Discrete_Range | Others_Choice;
     Others_Choice => ;
     Conditional_Clause_S => List : Seq Of Conditional_Clause;
+    Expression_Clause_S      => List : Seq Of Expression_Clause;
+    Expression_Alternative_S => List : Seq Of Expression_Alternative;
     Component_S          => List : Seq Of Component;
     Variant_S            => List : Seq Of Variant;
     Discriminant_S       => List : Seq Of Discriminant;
