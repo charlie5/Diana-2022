@@ -180,10 +180,10 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     enum_literal_s      Renames Enumeration_Type;
     integer             Renames Signed_Integer_Type;
     float               Renames Floating_Point_Type;
-    fixed               Renames Fixed_Point_Type;
+    fixed               Renames Ordinary_Fixed_Point_Type;
     array               Renames Array_Type;
     record              Renames Record_Type;
-    access              Renames Access_Type;
+    access              Renames Access_To_Object;
     derived             Renames Derived_Type;
     CONSTRAINED         Renames Constrained_Spec;
     constrained         Renames Constrained_Spec;
@@ -266,7 +266,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     FORMAL_TYPE_SPEC    Renames Generic_Formal_Type;
     formal_dscrt        Renames Formal_Discrete;
     formal_integer      Renames Formal_Signed_Integer;
-    formal_fixed        Renames Formal_Fixed_Point;
+    formal_fixed        Renames Formal_Ordinary_Fixed;
     formal_float        Renames Formal_Floating_Point;
     FORMAL_SUBPROG_DEF  Renames Formal_Subprogram_Default;
     box                 Renames Box;

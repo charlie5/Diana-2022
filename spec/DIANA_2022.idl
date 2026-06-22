@@ -462,26 +462,22 @@ Structure DIANA_2022 Root Diana_Node Is
 
 
     -- =======================================================================
-    -- 3.3 Type specifications (CORE subset)                 [Ada 22 RM 3.2]
+    -- 3.2 Type specifications (full Ada 2022 type taxonomy)  [Ada 22 RM 3.2]
+    --   The Generic_Formal_Type hierarchy (section 12) mirrors this one.
     -- =======================================================================
 
     Type_Spec ::=
-          Enumeration_Type
-        | Signed_Integer_Type
-        | Modular_Type
-        | Floating_Point_Type
-        | Fixed_Point_Type
-        | Array_Type
-        | Record_Type
+          Scalar_Type
         | Access_Type
+        | Composite_Type
         | Derived_Type
+        | Class_Wide_Type
         | Private_Type
         | Incomplete_Type
-        | Constrained_Spec
+        | Generic_Formal_Type      -- formal types are type specs (parallel tree)
+        | Constrained_Spec         -- a subtype_indication used as a type
         | Universal_Type
         | Void;
-        -- TODO(2022): Tagged_Record_Type, Interface_Type, Class_Wide_Type,
-        --   Anonymous_Access, Formal_Type (generics), Decimal_Fixed
 
     Constrained_Spec =>                         -- a subtype_indication
           Mark       : Name,
@@ -489,29 +485,95 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Universal_Type ::= Universal_Integer | Universal_Real | Universal_Fixed;
 
+    -- ----- Scalar types -------------------------------------  [Ada 22 RM 3.5]
+    Scalar_Type      ::= Discrete_Type | Real_Type;
+    Discrete_Type    ::= Enumeration_Type | Integer_Type;
+    Integer_Type     ::= Signed_Integer_Type | Modular_Type;
+    Real_Type        ::= Floating_Point_Type | Fixed_Point_Type;
+    Fixed_Point_Type ::= Ordinary_Fixed_Point_Type | Decimal_Fixed_Point_Type;
+
     Enumeration_Type =>
           Literals : Defining_Name_S;
     Signed_Integer_Type =>
           Range : Range;
-    Modular_Type =>
+    Modular_Type =>                             -- [Ada 22 RM 3.5.4]  (Ada 95+)
           Modulus : Expression;
     Floating_Point_Type =>
           Digits     : Expression,
           Real_Range : Range_Void;
-    Fixed_Point_Type =>                         -- TODO(2022): decimal 'digits'
+    Ordinary_Fixed_Point_Type =>
           Delta      : Expression,
           Real_Range : Range_Void;
-    Array_Type =>
+    Decimal_Fixed_Point_Type =>                 -- [Ada 22 RM 3.5.9]
+          Delta      : Expression,
+          Digits     : Expression,
+          Real_Range : Range_Void;
+
+    -- ----- Access types ------------------------------------  [Ada 22 RM 3.10]
+    Access_Type ::= Access_To_Object | Access_To_Subprogram;
+    Object_Access_Kind ::=
+          Pool_Specific            -- access T
+        | General_Access_All       -- access all T
+        | General_Access_Constant; -- access constant T
+    Access_To_Object =>
+          Designated   : Type_Spec,
+          Access_Kind  : Object_Access_Kind,
+          Is_Anonymous : Boolean;               -- anonymous access type
+    Access_To_Subprogram =>
+          Profile      : Header,
+          Is_Protected : Boolean,               -- access to protected subprogram
+          Is_Anonymous : Boolean;
+
+    -- ----- Composite types -----------------------------  [Ada 22 RM 3.6, 3.8]
+    Composite_Type ::=
+          Array_Type
+        | Record_Type
+        | Tagged_Record_Type
+        | Interface_Type
+        | Task_Type
+        | Protected_Type;
+
+    Array_Type =>                               -- TODO(2022): constrained vs unconstrained marker
           Index_Ranges : Discrete_Range_S,
           Component    : Constrained_Spec;
-    Record_Type =>                              -- TODO(2022): tagged/limited/abstract aspects
+    Record_Type =>                              -- untagged record
           Components : Component_S;
-    Access_Type =>                              -- TODO(2022): access-to-subprogram, anonymous
-          Designated : Type_Spec;
-    Derived_Type =>
+    Tagged_Record_Type =>                       -- tagged record / record extension  [Ada 22 RM 3.9]
+          Ancestor    : Type_Spec,              -- Void for a root tagged type
+          Progenitors : Name_S,                 -- implemented interfaces
+          Components  : Component_S;            -- abstract/limited via Properties aspect
+    Interface_Type =>                           -- [Ada 22 RM 3.9.4]
+          Progenitors : Name_S,
+          Kind        : Interface_Kind;
+    Interface_Kind ::=
+          Ordinary_Interface
+        | Limited_Interface
+        | Synchronized_Interface
+        | Task_Interface
+        | Protected_Interface;
+    Task_Type =>                                -- [Ada 22 RM 9.1]   (operations: TODO(2022))
+          Definition : Task_Definition;
+    Protected_Type =>                           -- [Ada 22 RM 9.4]   (operations: TODO(2022))
+          Definition : Protected_Definition;
+    Protected_Definition ::= Protected_Specification | Void;
+    Protected_Specification =>
+          Visible_Declarations : Declaration_S,
+          Private_Declarations : Declaration_S;
+
+    -- ----- Class-wide, derived, private, incomplete -----------
+    Class_Wide_Type =>                          -- T'Class  [Ada 22 RM 3.4.1]
+          Root_Type : Type_Spec;
+    Derived_Type =>                             -- "new S" (non-extension derivation)
           Parent : Constrained_Spec;
-    Private_Type =>                             -- limited-ness via a Properties aspect
-          Discriminants : Discriminant_Part;
+    Private_Type =>                             -- private / limited / tagged private; private extension
+          Discriminants : Discriminant_Part,
+          Ancestor      : Type_Spec,            -- Void unless a private extension ("new P with private")
+          Progenitors   : Name_S,               -- interfaces of a private extension
+          Is_Tagged     : Boolean,
+          Is_Limited    : Boolean,
+          Is_Abstract   : Boolean;
+    Incomplete_Type =>                          -- "type T;" / "type T is tagged;"  [Ada 22 RM 3.10.1]
+          Is_Tagged : Boolean;
 
     -- records: components, variants, discriminants            [Ada 22 RM 3.7, 3.8]
     Component ::=
@@ -654,25 +716,97 @@ Structure DIANA_2022 Root Diana_Node Is
           Specification : Generic_Header;
     Generic_Header ::= Procedure_Header | Function_Header | Package_Specification;
 
+    -- Generic formal part. Each formal is a wrapper node that *references* the
+    -- shared declaration/type nodes via attributes (so Generic_Formal_Type stays
+    -- solely a Type_Spec, and nothing is multiply class-membered).  [Ada 22 RM 12.1]
     Generic_Formal ::=
-          In_Parameter
-        | In_Out_Parameter
-        | Generic_Formal_Type
-        | Subprogram_Declaration;
-    Generic_Formal_Type ::=
-          Formal_Discrete
-        | Formal_Signed_Integer
-        | Formal_Modular
-        | Formal_Floating_Point
-        | Formal_Fixed_Point;
-        -- TODO(2022): Formal_Array, Formal_Access, Formal_Private, Formal_Derived,
-        --   Formal_Interface, Formal_Incomplete
+          Generic_Formal_Object
+        | Generic_Formal_Type_Declaration
+        | Generic_Formal_Subprogram
+        | Generic_Formal_Package;
+
+    Generic_Formal_Object =>                    -- [Ada 22 RM 12.4]
+          Names        : Defining_Name_S,
+          Mode         : Generic_Object_Mode,
+          Subtype_Mark : Name,
+          Default      : Object_Definition;     -- Void if none
+    Generic_Object_Mode ::= Generic_In | Generic_In_Out;
+
+    Generic_Formal_Type_Declaration =>          -- [Ada 22 RM 12.5]
+          Name       : Defining_Name,
+          Definition : Generic_Formal_Type;     -- a Type_Spec (see below)
+
+    Generic_Formal_Subprogram =>                -- [Ada 22 RM 12.6]
+          Specification : Subprogram_Declaration,   -- referenced, not membered
+          Default       : Formal_Subprogram_Default;
     Formal_Subprogram_Default ::=               -- "is <>" | "is Name" | (none)
           Name
         | Box
         | No_Default;
     Box        => ;
     No_Default => ;
+
+    Generic_Formal_Package =>                   -- [Ada 22 RM 12.7]
+          Name     : Defining_Name,
+          Template : Name,                      -- the named generic package
+          Actuals  : Association_S,             -- explicit actuals (empty if box)
+          Is_Box   : Boolean;                   -- "(<>)" — matches any instance
+
+    -- ----- Generic formal types (MIRROR of the Type_Spec hierarchy) ----------
+    --   Scalar formals are "open" (<>) markers; structured formals carry the
+    --   same shape as their actual counterparts.                  [Ada 22 RM 12.5]
+    Generic_Formal_Type ::=
+          Formal_Scalar_Type        -- mirrors Scalar_Type
+        | Formal_Access_Type        -- mirrors Access_Type
+        | Formal_Composite_Type     -- mirrors Composite_Type
+        | Formal_Derived_Type       -- mirrors Derived_Type
+        | Formal_Private_Type       -- mirrors Private_Type
+        | Formal_Incomplete_Type;   -- mirrors Incomplete_Type
+
+    Formal_Scalar_Type ::=                      -- [Ada 22 RM 12.5.2]
+          Formal_Discrete                       -- type T is (<>);
+        | Formal_Signed_Integer                 -- type T is range <>;
+        | Formal_Modular                        -- type T is mod <>;
+        | Formal_Floating_Point                 -- type T is digits <>;
+        | Formal_Ordinary_Fixed                 -- type T is delta <>;
+        | Formal_Decimal_Fixed;                 -- type T is delta <> digits <>;
+    Formal_Discrete       => ;
+    Formal_Signed_Integer => ;
+    Formal_Modular        => ;
+    Formal_Floating_Point => ;
+    Formal_Ordinary_Fixed => ;
+    Formal_Decimal_Fixed  => ;
+
+    Formal_Access_Type ::= Formal_Access_To_Object | Formal_Access_To_Subprogram;  -- [Ada 22 RM 12.5.4]
+    Formal_Access_To_Object =>
+          Designated  : Type_Spec,
+          Access_Kind : Object_Access_Kind;
+    Formal_Access_To_Subprogram =>
+          Profile : Header;
+
+    Formal_Composite_Type ::= Formal_Array_Type | Formal_Interface_Type;   -- [Ada 22 RM 12.5.3]
+    Formal_Array_Type =>
+          Index_Ranges : Discrete_Range_S,
+          Component    : Constrained_Spec;
+    Formal_Interface_Type =>                    -- [Ada 22 RM 12.5.5]
+          Progenitors : Name_S,
+          Kind        : Interface_Kind;
+
+    Formal_Derived_Type =>                      -- "new S [and I..] [with private]"  [Ada 22 RM 12.5.1]
+          Parent          : Constrained_Spec,
+          Progenitors     : Name_S,
+          Is_Tagged       : Boolean,
+          Is_Limited      : Boolean,
+          Is_Abstract     : Boolean,
+          Is_Synchronized : Boolean;
+    Formal_Private_Type =>                      -- "[abstract] [tagged] [limited] private"
+          Discriminants   : Discriminant_Part,
+          Is_Tagged       : Boolean,
+          Is_Limited      : Boolean,
+          Is_Abstract     : Boolean,
+          Is_Synchronized : Boolean;
+    Formal_Incomplete_Type =>                   -- "type T;" / "type T is tagged;" (formal)  [Ada 22 RM 12.5]
+          Is_Tagged : Boolean;
 
     Generic_Instantiation =>
           Generic_Unit          : Name,         -- structural
