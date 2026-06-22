@@ -1,0 +1,331 @@
+-- ===========================================================================
+-- DIANA_2022_Compatibility.idl  —  Rev 3/4 backwards-compatibility layer
+-- ---------------------------------------------------------------------------
+-- Presents the historical (DIANA Rev 3 / Rev 4) short, lower-case node and
+-- class names as aliases of the canonical DIANA_2022 names, using IDL's
+-- "Structure ... Renames ... Is ... End" form (DIANA Rev 3 RM §1.4.3).
+-- Satisfies the backwards-compatibility requirement in Initial_instructions.md.
+--
+-- The canonical full-word names live in spec/DIANA_2022.idl. Historical names
+-- here are taken from references/DIANA_Rev3_distilled.md and
+-- references/DIANA_Rev3_node_attributes.md.
+--
+-- IMPORTANT — not a pure 1:1 rename. DIANA_2022 deliberately *collapses* several
+-- Rev 3 constructs that Ada defines as semantically equivalent (per the project
+-- instructions). Those cases cannot be expressed as a single rename and are
+-- documented as comments here, not as alias lines. See "NON-1:1 MAPPINGS" below.
+--
+-- SYNTAX NOTE — each per-identifier alias is written
+--     historical_name Renames Canonical_Name;
+-- i.e. "introduce historical_name as a renaming of Canonical_Name", mirroring
+-- the structure-level `Renames` keyword. The exact surface syntax of an
+-- individual renaming should be reconciled against the Wulf/Lamb/Nestor IDL
+-- reference (Initial_instructions.md, IDL section) when a copy is available.
+-- ===========================================================================
+
+Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
+
+
+    -- =======================================================================
+    -- Compilation units and context                          [DIANA RM 10.1]
+    -- =======================================================================
+    compilation     Renames Compilation;
+    comp_unit       Renames Compilation_Unit;
+    CONTEXT_ELEM    Renames Context_Element;
+    with            Renames With_Clause;
+    UNIT_BODY       Renames Unit_Body;
+    -- NOTE: Rev 3 `context` (a node holding Seq Of CONTEXT_ELEM) is folded into
+    --   Compilation_Unit.Context : Context_Element_S — no separate node.
+
+
+    -- =======================================================================
+    -- Declarations                                            [DIANA RM 3.1]
+    -- =======================================================================
+    DECL                Renames Declaration;
+    number              Renames Number_Declaration;
+    type                Renames Type_Declaration;
+    subtype             Renames Subtype_Declaration;
+    subprogram_decl     Renames Subprogram_Declaration;
+    package_decl        Renames Package_Declaration;
+    task_decl           Renames Task_Declaration;
+    generic             Renames Generic_Declaration;
+    exception           Renames Exception_Declaration;
+    deferred_constant   Renames Deferred_Constant_Declaration;
+    rename              Renames Renaming;
+    use                 Renames Use_Clause;
+    OBJECT_DEF          Renames Object_Definition;
+    -- COLLAPSED: Rev 3 `constant` and `var` both map to Object_Declaration
+    --   (constant-ness is carried as a property, not a separate node).
+
+
+    -- =======================================================================
+    -- Defining occurrences (the symbol table)                 [DIANA RM 3.2]
+    -- =======================================================================
+    DEF_OCCURRENCE   Renames Defining_Occurrence;
+    DEF_ID           Renames Defining_Name;
+    def_op           Renames Defining_Operator;
+    def_char         Renames Defining_Character;
+
+    var_id           Renames Object_Name;
+    const_id         Renames Constant_Name;
+    number_id        Renames Number_Name;
+    dscrmt_id        Renames Discriminant_Name;
+    comp_id          Renames Component_Name;
+    type_id          Renames Type_Name;
+    subtype_id       Renames Subtype_Name;
+    enum_id          Renames Enumeration_Name;
+    exception_id     Renames Exception_Name;
+    label_id         Renames Label_Name;
+    named_stm_id     Renames Loop_Block_Name;
+    package_id       Renames Package_Name;
+    task_body_id     Renames Task_Body_Name;
+    entry_id         Renames Entry_Name;
+    generic_id       Renames Generic_Name;
+    attr_id          Renames Attribute_Name;
+    pragma_id        Renames Pragma_Name;
+    argument_id      Renames Argument_Name;
+    -- COLLAPSED into one Defining_Name each:
+    --   proc_id, function_id        -> Subprogram_Name
+    --   in_id, in_out_id, out_id    -> Parameter_Name
+    --   private_type_id, l_private_type_id -> Private_Type_Name
+    -- RESTRUCTURED: Rev 3 `iteration_id` (loop parameter) -> a plain
+    --   Defining_Name held by For_Loop.Parameter (no dedicated node).
+
+
+    -- =======================================================================
+    -- Used occurrences and names                          [DIANA RM 4.1]
+    -- =======================================================================
+    NAME             Renames Name;
+    used_name_id     Renames Used_Name;
+    used_object_id   Renames Used_Object;
+    used_op          Renames Used_Operator;
+    used_char        Renames Used_Character;
+    indexed          Renames Indexed_Component;
+    slice            Renames Slice;
+    selected         Renames Selected_Component;
+    all              Renames Dereference;
+    attribute        Renames Attribute_Reference;
+    attribute_call   Renames Attribute_Call;
+    function_call    Renames Function_Call;
+    DESIGNATOR_CHAR  Renames Selector_Name;
+    -- COLLAPSED: Rev 3 `used_bltn_id` and `used_bltn_op` both map to Used_Builtin.
+    -- RESTRUCTURED: Rev 3 DESIGNATOR (::= ID | OP) has no single counterpart;
+    --   used occurrences are direct members of Name in DIANA_2022.
+
+
+    -- =======================================================================
+    -- Expressions                                         [DIANA RM 4.3, 4.4]
+    -- =======================================================================
+    EXP                 Renames Expression;
+    numeric_literal     Renames Numeric_Literal;
+    string_literal      Renames String_Literal;
+    null_access         Renames Null_Literal;
+    aggregate           Renames Aggregate;
+    allocator           Renames Allocator;
+    conversion          Renames Type_Conversion;
+    qualified           Renames Qualified_Expression;
+    parenthesized       Renames Parenthesized_Expression;
+    binary              Renames Short_Circuit;
+    membership          Renames Membership;
+    SHORT_CIRCUIT_OP    Renames Short_Circuit_Op;
+    and_then            Renames And_Then;
+    or_else             Renames Or_Else;
+    MEMBERSHIP_OP       Renames Membership_Op;
+    in_op               Renames In_Set;
+    not_in              Renames Not_In_Set;
+    EXP_CONSTRAINED     Renames Allocated_Thing;
+    named               Renames Named_Association;
+    -- COLLAPSED: Rev 3 COMP_ASSOC and PARAM_ASSOC both map to Association;
+    --   Rev 3 `assoc` (named parameter association) maps to Named_Association.
+    -- NOTE: Rev 3 BINARY_OP (::= SHORT_CIRCUIT_OP) is dropped; arithmetic and
+    --   relational operators are Function_Call prefixes (see Operator).
+
+
+    -- =======================================================================
+    -- Statements                                              [DIANA RM 5]
+    -- =======================================================================
+    STM              Renames Statement;
+    null_stm         Renames Null_Statement;
+    assign           Renames Assignment;
+    procedure_call   Renames Procedure_Call;
+    exit             Renames Exit_Statement;
+    return           Renames Return_Statement;
+    goto             Renames Goto_Statement;
+    if               Renames If_Statement;
+    case             Renames Case_Statement;
+    loop             Renames Loop_Statement;
+    block            Renames Block_Statement;
+    labeled          Renames Labeled_Statement;
+    raise            Renames Raise_Statement;
+    delay            Renames Delay_Statement;
+    code             Renames Code_Statement;
+    COND_CLAUSE      Renames Conditional_Clause;
+    cond_clause      Renames Conditional_Clause;
+    ALTERNATIVE      Renames Alternative;
+    alternative      Renames Case_Alternative;
+    ITERATION        Renames Iteration;
+    while            Renames While_Loop;
+    -- COLLAPSED: Rev 3 `for` and `reverse` both map to For_Loop
+    --   (direction carried by For_Loop.Reverse_Order : Boolean).
+    -- COLLAPSED: the three Ada return forms (return;, return X;, extended
+    --   return) all map to the single Return_Statement.
+    -- RESTRUCTURED: Rev 3 `named_stm` (named loop/block) — naming is handled by
+    --   Loop_Block_Name + the labeling mechanism; no separate wrapper node.
+
+
+    -- =======================================================================
+    -- Type specifications                                     [DIANA RM 3.3]
+    -- =======================================================================
+    TYPE_SPEC           Renames Type_Spec;
+    enum_literal_s      Renames Enumeration_Type;
+    integer             Renames Signed_Integer_Type;
+    float               Renames Floating_Point_Type;
+    fixed               Renames Fixed_Point_Type;
+    array               Renames Array_Type;
+    record              Renames Record_Type;
+    access              Renames Access_Type;
+    derived             Renames Derived_Type;
+    CONSTRAINED         Renames Constrained_Spec;
+    constrained         Renames Constrained_Spec;
+    universal_integer   Renames Universal_Integer;
+    universal_real      Renames Universal_Real;
+    universal_fixed     Renames Universal_Fixed;
+    COMP                Renames Component;
+    variant_part        Renames Variant_Part;
+    variant             Renames Variant;
+    null_comp           Renames Null_Component;
+    VARIANT_S           Renames Variant_S;
+    CHOICE              Renames Choice;
+    CHOICE_S            Renames Choice_S;
+    others              Renames Others_Choice;
+    DSCRMT_VAR          Renames Discriminant;
+    DSCRMT_VAR_S        Renames Discriminant_S;
+    dscrmt_var_s        Renames Discriminant_S;
+    dscrmt_aggregate    Renames Discriminant_Constraint;
+    -- COLLAPSED: Rev 3 `private` and `l_private` both map to Private_Type
+    --   (limited-ness carried as a Semantic_Property aspect).
+    -- NEW(2022/95): Modular_Type, Incomplete_Type are explicit nodes (Rev 3
+    --   modelled incomplete types as TYPE_SPEC ::= void).
+    -- RESTRUCTURED: Rev 3 `inner_record` is folded into Variant.Components.
+
+
+    -- =======================================================================
+    -- Constraints                                             [DIANA RM 3.5]
+    -- =======================================================================
+    CONSTRAINT       Renames Constraint;
+    range            Renames Range;
+    RANGE            Renames Range;
+    DSCRT_RANGE      Renames Discrete_Range;
+    DSCRT_RANGE_S    Renames Discrete_Range_S;
+    -- RESTRUCTURED: Rev 3 `index` is folded into Array_Type.Index_Ranges;
+    --   the Rev 3 real constraints (float/fixed under CONSTRAINT) map to
+    --   Range_Constraint_Real.
+
+
+    -- =======================================================================
+    -- Subprograms, packages, bodies, headers                  [DIANA RM 6, 7]
+    -- =======================================================================
+    HEADER               Renames Header;
+    procedure            Renames Procedure_Header;
+    function             Renames Function_Header;
+    entry                Renames Entry_Header;
+    PARAM                Renames Parameter;
+    in                   Renames In_Parameter;
+    in_out               Renames In_Out_Parameter;
+    out                  Renames Out_Parameter;
+    PARAM_S              Renames Parameter_S;
+    SUBPROGRAM_DEF       Renames Subprogram_Definition;
+    subprogram_body      Renames Subprogram_Body;
+    SUBP_BODY_DESC       Renames Subprogram_Body_Description;
+    BLOCK_STUB           Renames Block_Or_Stub;
+    stub                 Renames Stub;
+    subunit              Renames Subunit;
+    SUBUNIT_BODY         Renames Subunit_Body;
+    PACKAGE_DEF          Renames Package_Definition;
+    package_spec         Renames Package_Specification;
+    PACKAGE_SPEC         Renames Package_Specification;
+    package_body         Renames Package_Body;
+    PACK_BODY_DESC       Renames Package_Body_Description;
+    LOCATION             Renames Location;
+    LANGUAGE             Renames Language_Binding;
+    task_spec            Renames Task_Specification;
+    TASK_DEF             Renames Task_Definition;
+    task_body            Renames Task_Body;
+    DECL_S               Renames Declaration_S;
+    ITEM                 Renames Item;
+    ITEM_S               Renames Item_S;
+    -- COLLAPSED: `block` is shared by Block_Statement (see Statements).
+
+
+    -- =======================================================================
+    -- Generic units                                           [DIANA RM 12]
+    -- =======================================================================
+    GENERIC_HEADER      Renames Generic_Header;
+    GENERIC_PARAM       Renames Generic_Formal;
+    GENERIC_PARAM_S     Renames Generic_Formal_S;
+    FORMAL_TYPE_SPEC    Renames Generic_Formal_Type;
+    formal_dscrt        Renames Formal_Discrete;
+    formal_integer      Renames Formal_Signed_Integer;
+    formal_fixed        Renames Formal_Fixed_Point;
+    formal_float        Renames Formal_Floating_Point;
+    FORMAL_SUBPROG_DEF  Renames Formal_Subprogram_Default;
+    box                 Renames Box;
+    no_default          Renames No_Default;
+    instantiation       Renames Generic_Instantiation;
+    -- COLLAPSED: Rev 3 GENERIC_ASSOC (::= ACTUAL | assoc) maps to Association.
+    -- NOTE: `generic` aliases Generic_Declaration (see Declarations).
+
+
+    -- =======================================================================
+    -- Representation and pragmas                              [DIANA RM 13]
+    -- =======================================================================
+    address          Renames Address_Clause;
+    record_rep       Renames Record_Representation;
+    comp_rep         Renames Component_Rep;
+    COMP_REP         Renames Component_Rep;
+    PRAGMA           Renames Pragma;
+    pragma           Renames Pragma;
+    ARGUMENT         Renames Argument_Name;
+    -- RESTRUCTURED (the aspect/attribute unification):
+    --   Rev 3 `simple_rep` (length clause + enumeration representation clause)
+    --   becomes a Semantic_Property with Origin = From_Attribute_Clause.
+    --   Likewise aspect specifications become Semantic_Property with
+    --   Origin = From_Aspect. There is therefore no `simple_rep` alias.
+    --   Rev 3 `alignment` is folded into Record_Representation.Alignment.
+
+
+    -- =======================================================================
+    -- Sequences and the empty node                            [DIANA]
+    -- =======================================================================
+    void             Renames Void;
+    -- Most Rev 3 "_s" sequence nodes alias the DIANA_2022 "_S" carriers, e.g.:
+    stm_s            Renames Statement_S;
+    decl_s           Renames Declaration_S;
+    exp_s            Renames Expression_S;
+    name_s           Renames Name_S;
+    id_s             Renames Defining_Name_S;
+    -- (id_s in Rev 3 is Seq Of ID; in DIANA_2022 defining-name lists are
+    --  Defining_Name_S. Used-name lists use Name_S.)
+
+
+    -- =======================================================================
+    -- NON-1:1 MAPPINGS — summary (no alias lines; documented above in place)
+    -- -----------------------------------------------------------------------
+    --   constant, var                    -> Object_Declaration       (collapse)
+    --   proc_id, function_id             -> Subprogram_Name          (collapse)
+    --   in_id, in_out_id, out_id         -> Parameter_Name           (collapse)
+    --   private_type_id, l_private_type_id -> Private_Type_Name       (collapse)
+    --   used_bltn_id, used_bltn_op       -> Used_Builtin             (collapse)
+    --   for, reverse                     -> For_Loop                 (collapse)
+    --   return / return X / extended     -> Return_Statement         (collapse)
+    --   private, l_private               -> Private_Type             (collapse)
+    --   COMP_ASSOC, PARAM_ASSOC          -> Association              (collapse)
+    --   simple_rep (length/enum rep)     -> Semantic_Property        (unify)
+    --   aspect specifications            -> Semantic_Property        (unify)
+    --   context (node)                   -> Compilation_Unit.Context (fold)
+    --   inner_record                     -> Variant.Components       (fold)
+    --   alignment                        -> Record_Representation.Alignment (fold)
+    --   index                            -> Array_Type.Index_Ranges  (fold)
+    -- =======================================================================
+
+End;
