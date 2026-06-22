@@ -45,7 +45,13 @@ Convention is to list a node's attributes grouped structural → lexical → sem
 - **Provenance comments:** annotate constructs with where they come from — DIANA RM vs the Ada RM. Rev 3 already did this: each rule group opens with a comment citing the corresponding Ada LRM section. Mirror that convention (citing the Ada 2022 RM), and add a DIANA-RM citation where a node descends from the historical design.
 - Expose the shortened DIANA Rev 3/4 node names via **`RENAMES`** — use IDL's native `Structure … Renames … Is … End` form for this; the full-word `Camel_Case` names are canonical.
 
-Note the **naming-style shift from original DIANA**: Rev 3/4 use ALL-UPPER-CASE class names (`DECL`, `EXP`, `STM`, `TYPE_SPEC`, `DEF`), all-lower-case node names (`tree`, `constant`, `var`), and prefixed lower-case attributes (`as_exp`, `sm_type_spec`, `lx_srcpos`). DIANA_2022's canonical names are `Camel_Case` full words instead; the historical short/lower-case names live behind the `Renames` compatibility layer. **Open design question:** whether the `as_`/`lx_`/`sm_`/`cd_` attribute-prefix scheme is kept as-is, re-cased (`As_`/`Lx_`/`Sm_`/`Cd_`), or spelled out — not yet decided; preserve the four-way *classification* regardless of spelling.
+Note the **naming-style shift from original DIANA**: Rev 3/4 use ALL-UPPER-CASE class names (`DECL`, `EXP`, `STM`, `TYPE_SPEC`, `DEF`), all-lower-case node names (`tree`, `constant`, `var`), and prefixed lower-case attributes (`as_exp`, `sm_type_spec`, `lx_srcpos`). DIANA_2022's canonical names are `Camel_Case` full words instead; the historical short/lower-case names live behind the `Renames` compatibility layer.
+
+**Attribute naming (decided):** DIANA_2022 uses **no attribute prefixes** — attributes are named purely by meaning (`Object_Type`, `Source_Position`, `Definition`), not `as_`/`lx_`/`sm_`/`cd_`. The four-way structural/lexical/semantic/code *classification* is still preserved, but shown by grouping and comments within each node, not encoded in the identifier.
+
+**Structure (decided):** follow Rev 4's approach — a single-parent class hierarchy (each node/class in at most one class) with shared attributes **hoisted** to the highest applicable class. Universal lexical attributes (`Source_Position`, `Comments`) live on the root node class rather than being repeated per node.
+
+**`.idl` layout (decided):** one attribute/alternative per line with aligned colons; the terminating `;` attaches to the **last element** (never on its own line); trailing kind/provenance comments aligned within each node. The spec lives in `spec/DIANA_2022.idl`.
 
 ## Core design decisions (non-obvious; keep consistent)
 

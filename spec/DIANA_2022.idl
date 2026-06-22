@@ -1,0 +1,836 @@
+-- ===========================================================================
+-- DIANA_2022.idl  —  Descriptive Intermediate Attributed Notation for Ada 2022
+-- ---------------------------------------------------------------------------
+-- An updated, backwards-compatible DIANA intermediate representation, written
+-- in the Wulf/Lamb/Nestor IDL (NOT CORBA IDL).
+--
+-- STATUS: v0.1 CORE. Establishes the architecture, conventions, and a faithful
+--   core node set derived from the DIANA Rev 3 domain (see
+--   references/DIANA_Rev3_node_attributes.md). The full Ada 2022 surface (tasks,
+--   complete type system, contracts detail, parallelism, ...) is marked with
+--   "TODO(2022)" extension points to be filled in subsequent passes.
+--
+-- CONVENTIONS
+--   * Identifiers: Camel_Case, full words, initial capitals. The DIANA RM
+--     class/node case distinction is dropped; classes and nodes are both
+--     Camel_Case. Class productions use "::=", node attributes use "=>".
+--   * NO attribute prefixes. Attributes are named by meaning; their kind is
+--     shown by trailing comments (structural / lexical / semantic / code) — see
+--     CLAUDE.md. This is a naming convention only, and is reversible.
+--   * Single-parent hierarchy with shared attributes hoisted to the highest
+--     applicable class (Rev 4 style). The universal lexical attributes live on
+--     the root class Diana_Node.
+--   * Provenance: each section cites the Ada 2022 RM clause and/or DIANA origin.
+--     "[Ada 22 RM x.y]" = Ada 2022 Reference Manual; "[DIANA]" = carried over
+--     from the historical DIANA design.
+--   * Idioms: "_S" = sequence (Foo_S => List : Seq Of Foo);
+--             "_Void" = optional (Foo_Void ::= Foo | Void).
+--
+-- The Rev 3/4 short node names are exposed separately via a "Renames"
+-- compatibility structure (spec/DIANA_2022_Compatibility.idl — TODO).
+-- ===========================================================================
+
+Structure DIANA_2022 Root Diana_Node Is
+
+
+    -- =======================================================================
+    -- Private (implementation-defined) types                        [DIANA]
+    -- Each DIANA user supplies an implementation; see Diana_Concrete refinement.
+    -- =======================================================================
+
+    Type Source_Position;  -- location of a node in the original source
+    Type Comments;         -- comments attached to a node (source reconstruction)
+    Type Symbol_Rep;       -- spelling of identifiers, strings, characters
+    Type Value;            -- value of a static expression (or "no value")
+    Type Number_Rep;       -- representation of a numeric literal
+
+
+    -- =======================================================================
+    -- Universal node base                                           [Rev 4]
+    -- The single root class. Every node is (transitively) a member, so the
+    -- universal lexical attributes below are inherited by all nodes.
+    -- =======================================================================
+
+    Diana_Node ::=
+          Compilation
+        | Compilation_Unit
+        | Context_Element
+        | Declaration
+        | Defining_Occurrence
+        | Type_Spec
+        | Constraint
+        | Header
+        | Expression            -- Name is a subclass of Expression (see below)
+        | Statement
+        | Association
+        | Semantic_Property
+        | Element_List;         -- the "_S" sequence carriers (grouped, see end)
+
+    Diana_Node =>
+          Source_Position : Source_Position,    -- lexical
+          Comments        : Comments;           -- lexical
+
+
+    -- =======================================================================
+    -- 10. Compilation units                                [Ada 22 RM 10.1]
+    -- =======================================================================
+
+    Compilation =>
+          Units : Compilation_Unit_S;
+
+    Compilation_Unit =>
+          Context   : Context_Element_S,        -- structural
+          Unit_Body : Unit_Body;                -- structural
+
+    Unit_Body ::=
+          Subprogram_Declaration
+        | Subprogram_Body
+        | Package_Declaration
+        | Package_Body
+        | Subunit
+        | Generic_Declaration
+        | Generic_Instantiation
+        | Void;                 -- a unit consisting only of pragmas
+
+    Context_Element ::=
+          With_Clause
+        | Use_Clause
+        | Pragma;
+
+    With_Clause =>             -- [Ada 22 RM 10.1.2]  (limited/private with: TODO(2022))
+          Names : Name_S;
+
+
+    -- =======================================================================
+    -- 3.1 Declarations                                      [Ada 22 RM 3.1]
+    -- =======================================================================
+
+    Declaration ::=
+          Object_Declaration
+        | Number_Declaration
+        | Type_Declaration
+        | Subtype_Declaration
+        | Subprogram_Declaration
+        | Package_Declaration
+        | Task_Declaration
+        | Generic_Declaration
+        | Exception_Declaration
+        | Deferred_Constant_Declaration
+        | Renaming_Declaration
+        | Representation_Clause
+        | Use_Clause
+        | Pragma;
+
+    -- Declarations / types that may carry aspects or attribute-definition
+    -- clauses (semantic). Attached to these base classes for now; refine to
+    -- exact Ada legality later. -- TODO(2022)
+    Declaration => Properties : Semantic_Property_S;   -- semantic
+    Type_Spec   => Properties : Semantic_Property_S;   -- semantic
+
+    -- 3.3.1 objects and named numbers                     [Ada 22 RM 3.3.1]
+    Object_Declaration =>
+          Names          : Defining_Name_S,     -- structural (the Object_Names)
+          Object_Subtype : Type_Spec,           -- structural
+          Initialization : Object_Definition;   -- structural (Void if none)
+
+    -- collapses an init expression and a renaming into one optional slot
+    Object_Definition ::=
+          Expression
+        | Renaming
+        | Void;
+
+    Number_Declaration =>
+          Names                   : Defining_Name_S,     -- structural
+          Static_Value_Expression : Expression;          -- structural (universal-typed)
+
+    -- 3.2.1 type & subtype declarations                   [Ada 22 RM 3.2.1]
+    Type_Declaration =>
+          Name          : Defining_Name,        -- structural
+          Discriminants : Discriminant_Part,    -- structural (Void if none)
+          Definition    : Type_Spec;            -- structural
+
+    Subtype_Declaration =>
+          Name                    : Defining_Name,       -- structural
+          Subtype_Mark_Constraint : Constrained_Spec;    -- structural
+
+    Exception_Declaration =>                   -- [Ada 22 RM 11.1]
+          Names : Defining_Name_S;
+
+    Deferred_Constant_Declaration =>           -- [Ada 22 RM 7.4]
+          Names        : Defining_Name_S,
+          Subtype_Mark : Name;
+
+    Use_Clause =>                              -- [Ada 22 RM 8.4]  (use / use type)
+          Names : Name_S;
+
+    Renaming_Declaration =>                    -- [Ada 22 RM 8.5]
+          Renamed : Renaming;
+
+
+    -- =======================================================================
+    -- 3.2 Defining and used occurrences (the symbol table)          [DIANA]
+    --   Each entity has exactly one Defining_Name carrying its semantic info.
+    --   Used occurrences (a kind of Name) point back via Definition.
+    -- =======================================================================
+
+    Defining_Occurrence ::=
+          Defining_Name
+        | Defining_Operator
+        | Defining_Character;
+
+    Defining_Name ::=
+          Object_Name
+        | Constant_Name
+        | Number_Name
+        | Discriminant_Name
+        | Component_Name
+        | Parameter_Name
+        | Type_Name
+        | Subtype_Name
+        | Enumeration_Name
+        | Exception_Name
+        | Label_Name
+        | Loop_Block_Name
+        | Subprogram_Name
+        | Package_Name
+        | Task_Body_Name
+        | Entry_Name
+        | Generic_Name
+        | Private_Type_Name
+        | Attribute_Name        -- predefined-environment names
+        | Pragma_Name
+        | Argument_Name;
+
+    -- all defining names carry their spelling
+    Defining_Name => Spelling : Symbol_Rep;    -- lexical
+
+    -- representative semantic content (renamed from Rev 3 sm_* attributes):
+    Object_Name =>
+          Object_Type : Type_Spec,              -- semantic
+          Address     : Expression,             -- semantic
+          Object_Def  : Object_Definition;      -- semantic
+
+    Constant_Name =>
+          Object_Type      : Type_Spec,         -- semantic
+          Address          : Expression,        -- semantic
+          Object_Def       : Object_Definition, -- semantic
+          First_Definition : Defining_Occurrence;-- semantic (deferred constants)
+
+    Type_Name =>
+          Type_Specification : Type_Spec,           -- semantic
+          First_Definition   : Defining_Occurrence; -- semantic (multiple decl points)
+
+    Subtype_Name =>
+          Type_Specification : Constrained_Spec;     -- semantic
+
+    Subprogram_Name =>
+          Specification    : Header,                 -- semantic
+          Body             : Subprogram_Body_Description, -- semantic
+          Location         : Location,               -- semantic
+          Stub             : Defining_Occurrence,    -- semantic
+          First_Definition : Defining_Occurrence;    -- semantic
+
+    Package_Name =>
+          Specification    : Package_Specification,  -- semantic
+          Body             : Package_Body_Description, -- semantic
+          First_Definition : Defining_Occurrence;    -- semantic
+
+    -- (remaining Defining_Name members: attributes elided in v0.1) -- TODO
+
+
+    -- =======================================================================
+    -- 4.1 / 4.4 Expressions and names                 [Ada 22 RM 4.1, 4.4]
+    --   Name is a subclass of Expression. All operators and calls are
+    --   Function_Call, except the short-circuit and membership forms. [DIANA]
+    -- =======================================================================
+
+    Expression ::=
+          Name
+        | Numeric_Literal
+        | String_Literal
+        | Null_Literal
+        | Aggregate
+        | Allocator
+        | Qualified_Expression
+        | Type_Conversion
+        | Parenthesized_Expression
+        | Short_Circuit
+        | Membership;
+        -- TODO(2022): Conditional_Expression (if/case expr), Quantified_Expression,
+        --   Declare_Expression, Reduction (parallel), Delta_Aggregate,
+        --   Container_Aggregate
+
+    -- hoisted to all expressions
+    Expression =>
+          Expression_Type : Type_Spec,          -- semantic
+          Static_Value    : Value;              -- semantic
+
+    Numeric_Literal =>
+          Literal_Image : Number_Rep;           -- lexical
+
+    String_Literal =>
+          Literal_Image : Symbol_Rep,           -- lexical
+          Constraint    : Constraint;           -- semantic
+
+    Null_Literal => ;                          -- the "null" access value
+
+    Parenthesized_Expression =>
+          Operand : Expression;
+
+    Type_Conversion =>
+          Target  : Name,
+          Operand : Expression;
+
+    Qualified_Expression =>
+          Target  : Name,
+          Operand : Expression;
+
+    Allocator =>
+          Allocated : Allocated_Thing;
+
+    Allocated_Thing ::=                         -- new T'(x)  |  new T
+          Expression
+        | Constrained_Spec;
+
+    Aggregate =>
+          Associations : Association_S,         -- structural
+          Normalized   : Expression_S;          -- semantic
+
+    Short_Circuit =>
+          Left     : Expression,
+          Operator : Short_Circuit_Op,
+          Right    : Expression;
+    Short_Circuit_Op ::= And_Then | Or_Else;
+
+    Membership =>
+          Operand  : Expression,
+          Operator : Membership_Op,
+          Tested   : Type_Or_Range;
+    Membership_Op ::= In_Set | Not_In_Set;
+    Type_Or_Range ::= Range | Name;            -- TODO(2022): membership choice lists
+
+    -- 4.1 names
+    Name ::=
+          Used_Name
+        | Used_Object
+        | Used_Operator
+        | Used_Character
+        | Used_Builtin
+        | Indexed_Component
+        | Slice
+        | Selected_Component
+        | Dereference
+        | Attribute_Reference
+        | Attribute_Call
+        | Function_Call;
+
+    -- semantic links (the symbol-table back-references)            [DIANA]
+    Used_Name      => Definition       : Defining_Occurrence;  -- semantic
+    Used_Object    => Definition       : Defining_Occurrence;  -- semantic (objects, enum literals, numbers)
+    Used_Character => Definition       : Defining_Occurrence;  -- semantic
+    Used_Operator  => Definition       : Defining_Occurrence;  -- semantic
+    Used_Builtin   => Builtin_Operator : Operator;             -- semantic (predefined operators)
+
+    Indexed_Component =>
+          Prefix  : Name,
+          Indices : Expression_S;
+
+    Slice =>
+          Prefix         : Name,
+          Discrete_Range : Discrete_Range;
+
+    Selected_Component =>
+          Prefix   : Name,
+          Selector : Selector_Name;
+    Selector_Name ::= Used_Name | Used_Operator | Used_Character;
+
+    Dereference =>                              -- name.all  [Ada 22 RM 4.1]
+          Prefix : Name;
+
+    Attribute_Reference =>
+          Prefix    : Name,
+          Attribute : Name;                     -- a predefined Attribute_Name
+
+    Attribute_Call =>
+          Prefix   : Name,
+          Argument : Expression;
+
+    -- 6.4 calls and operators (one node for both)                 [DIANA]
+    Function_Call =>
+          Prefix             : Name,            -- structural
+          Actuals            : Association_S,   -- structural
+          Is_Prefix_Notation : Boolean,         -- lexical (infix vs. prefix; conformance)
+          Normalized_Actuals : Expression_S;    -- semantic
+
+    Association ::=                             -- parameter / aggregate associations
+          Expression
+        | Named_Association;
+    Named_Association =>
+          Choices : Choice_S,
+          Actual  : Expression;
+
+
+    -- =======================================================================
+    -- 5. Statements                                         [Ada 22 RM 5.1]
+    -- =======================================================================
+
+    Statement ::=
+          Null_Statement
+        | Assignment
+        | Procedure_Call
+        | Exit_Statement
+        | Return_Statement
+        | Goto_Statement
+        | If_Statement
+        | Case_Statement
+        | Loop_Statement
+        | Block_Statement
+        | Labeled_Statement
+        | Raise_Statement
+        | Delay_Statement
+        | Pragma;
+        -- TODO(2022): Accept_Statement, Select_Statement, Entry_Call,
+        --   Abort_Statement, Requeue_Statement, parallel loop / parallel block,
+        --   Terminate_Alternative
+
+    Null_Statement => ;
+
+    Assignment =>
+          Target : Name,
+          Source : Expression;
+
+    Procedure_Call =>
+          Prefix             : Name,
+          Actuals            : Association_S,
+          Normalized_Actuals : Expression_S;    -- semantic
+
+    Goto_Statement =>
+          Target : Name;
+
+    Delay_Statement =>                          -- TODO(2022): delay until
+          Duration : Expression;
+
+    Labeled_Statement =>
+          Labels    : Defining_Name_S,
+          Statement : Statement;
+
+    -- 5.8 return: ONE node collapses simple "return X;", "return;", and the
+    -- extended return "return R : T := X do ... end return;".        [Instr]
+    Return_Statement =>
+          Returned_Object    : Object_Definition,   -- Void for "return;"
+          Handled_Statements : Statement_S;         -- the "do ... end return"; empty if absent
+
+    If_Statement =>
+          Clauses : Conditional_Clause_S;
+    Conditional_Clause =>
+          Condition  : Object_Definition,       -- Void condition = the "else" arm
+          Statements : Statement_S;
+
+    Case_Statement =>
+          Selector     : Expression,
+          Alternatives : Alternative_S;
+    Alternative ::= Case_Alternative | Pragma;
+    Case_Alternative =>
+          Choices    : Choice_S,
+          Statements : Statement_S;
+
+    Loop_Statement =>
+          Iteration  : Iteration,
+          Statements : Statement_S;
+    Iteration ::=                               -- TODO(2022): iterator (for X of ...), parallel
+          No_Iteration
+        | While_Loop
+        | For_Loop;
+    While_Loop =>
+          Condition : Expression;
+    For_Loop =>
+          Parameter      : Defining_Name,
+          Discrete_Range : Discrete_Range,
+          Reverse_Order  : Boolean;
+
+    Block_Statement =>
+          Declarations : Item_S,
+          Statements   : Statement_S,
+          Handlers     : Alternative_S;
+
+    Exit_Statement =>
+          Loop_Name : Name,                     -- Void if unnamed
+          Condition : Object_Definition;        -- Void if no "when"
+
+    Raise_Statement =>                          -- Void for re-raise; TODO(2022): raise ... with msg
+          Exception_Name : Name;
+
+
+    -- =======================================================================
+    -- 3.3 Type specifications (CORE subset)                 [Ada 22 RM 3.2]
+    -- =======================================================================
+
+    Type_Spec ::=
+          Enumeration_Type
+        | Signed_Integer_Type
+        | Modular_Type
+        | Floating_Point_Type
+        | Fixed_Point_Type
+        | Array_Type
+        | Record_Type
+        | Access_Type
+        | Derived_Type
+        | Private_Type
+        | Incomplete_Type
+        | Constrained_Spec
+        | Universal_Type
+        | Void;
+        -- TODO(2022): Tagged_Record_Type, Interface_Type, Class_Wide_Type,
+        --   Anonymous_Access, Formal_Type (generics), Decimal_Fixed
+
+    Constrained_Spec =>                         -- a subtype_indication
+          Mark       : Name,
+          Constraint : Constraint;
+
+    Universal_Type ::= Universal_Integer | Universal_Real | Universal_Fixed;
+
+    Enumeration_Type =>
+          Literals : Defining_Name_S;
+    Signed_Integer_Type =>
+          Range : Range;
+    Modular_Type =>
+          Modulus : Expression;
+    Floating_Point_Type =>
+          Digits     : Expression,
+          Real_Range : Range_Void;
+    Fixed_Point_Type =>                         -- TODO(2022): decimal 'digits'
+          Delta      : Expression,
+          Real_Range : Range_Void;
+    Array_Type =>
+          Index_Ranges : Discrete_Range_S,
+          Component    : Constrained_Spec;
+    Record_Type =>                              -- TODO(2022): tagged/limited/abstract aspects
+          Components : Component_S;
+    Access_Type =>                              -- TODO(2022): access-to-subprogram, anonymous
+          Designated : Type_Spec;
+    Derived_Type =>
+          Parent : Constrained_Spec;
+    Private_Type =>                             -- limited-ness via a Properties aspect
+          Discriminants : Discriminant_Part;
+
+    -- records: components, variants, discriminants            [Ada 22 RM 3.7, 3.8]
+    Component ::=
+          Object_Declaration
+        | Variant_Part
+        | Null_Component
+        | Pragma;
+    Null_Component => ;
+    Variant_Part =>
+          Discriminant : Name,
+          Variants     : Variant_S;
+    Variant =>
+          Choices    : Choice_S,
+          Components : Component_S;
+    Discriminant_Part ::= Discriminant_S | Void;
+
+
+    -- =======================================================================
+    -- 3.5 Constraints                                       [Ada 22 RM 3.5]
+    -- =======================================================================
+
+    Constraint ::=
+          Range
+        | Range_Constraint_Real
+        | Discrete_Range_S
+        | Discriminant_Constraint
+        | Void;
+    Range =>
+          Lower : Expression,
+          Upper : Expression;
+    Discrete_Range ::= Constrained_Spec | Range;
+    Discriminant_Constraint =>
+          Associations : Association_S,
+          Normalized   : Expression_S;          -- semantic
+
+
+    -- =======================================================================
+    -- 6 / 7 Subprograms, packages, bodies, headers          [Ada 22 RM 6, 7]
+    -- =======================================================================
+
+    Header ::= Procedure_Header | Function_Header | Entry_Header;
+    Procedure_Header =>
+          Parameters : Parameter_S;
+    Function_Header =>
+          Parameters     : Parameter_S,
+          Result_Subtype : Name;                -- Void for instantiation
+    Entry_Header =>
+          Family_Index : Discrete_Range,        -- Void if not a family
+          Parameters   : Parameter_S;
+
+    Subprogram_Declaration =>
+          Designator : Defining_Occurrence,
+          Header     : Header,
+          Definition : Subprogram_Definition;
+    Subprogram_Definition ::=
+          Formal_Subprogram_Default
+        | Generic_Instantiation
+        | Renaming
+        | Language_Binding
+        | Void;
+    Subprogram_Body =>
+          Designator : Defining_Occurrence,
+          Header     : Header,
+          Body       : Block_Or_Stub;
+    Subprogram_Body_Description ::=
+          Block_Statement
+        | Stub
+        | Generic_Instantiation
+        | Formal_Subprogram_Default
+        | Renaming
+        | Language_Binding
+        | Void;
+
+    Parameter ::=                               -- TODO(2022): aliased, anonymous access
+          In_Parameter
+        | Out_Parameter
+        | In_Out_Parameter;
+    In_Parameter =>
+          Names        : Defining_Name_S,
+          Subtype_Mark : Name,
+          Default      : Object_Definition;
+    Out_Parameter =>
+          Names        : Defining_Name_S,
+          Subtype_Mark : Name;
+    In_Out_Parameter =>
+          Names        : Defining_Name_S,
+          Subtype_Mark : Name;
+
+    Package_Declaration =>
+          Name       : Defining_Name,
+          Definition : Package_Definition;
+    Package_Definition ::=
+          Package_Specification
+        | Generic_Instantiation
+        | Renaming;
+    Package_Specification =>
+          Visible_Declarations : Declaration_S,
+          Private_Declarations : Declaration_S;
+    Package_Body =>
+          Name : Defining_Name,
+          Body : Block_Or_Stub;
+    Package_Body_Description ::=
+          Block_Statement
+        | Stub
+        | Renaming
+        | Generic_Instantiation
+        | Void;
+
+    Block_Or_Stub ::= Block_Statement | Stub;
+    Stub => ;
+    Subunit =>
+          Parent : Name,
+          Body   : Subunit_Body;
+    Subunit_Body ::= Subprogram_Body | Package_Body | Task_Body;
+    Renaming =>
+          Renamed : Name;
+    Location ::= Expression | Void;
+    Language_Binding =>
+          Convention : Argument_Name;
+
+    Task_Declaration =>                         -- TODO(2022): full task / protected
+          Name       : Defining_Name,
+          Definition : Task_Definition;
+    Task_Definition ::= Task_Specification | Void;
+    Task_Specification =>
+          Declarations : Declaration_S;
+    Task_Body =>
+          Name : Defining_Name,
+          Body : Block_Or_Stub;
+
+
+    -- =======================================================================
+    -- 12 Generic units (mirror the type/subprogram/package system)
+    --                                                       [Ada 22 RM 12]
+    -- =======================================================================
+
+    Generic_Declaration =>
+          Name          : Defining_Name,
+          Formals       : Generic_Formal_S,
+          Specification : Generic_Header;
+    Generic_Header ::= Procedure_Header | Function_Header | Package_Specification;
+
+    Generic_Formal ::=
+          In_Parameter
+        | In_Out_Parameter
+        | Generic_Formal_Type
+        | Subprogram_Declaration;
+    Generic_Formal_Type ::=
+          Formal_Discrete
+        | Formal_Signed_Integer
+        | Formal_Modular
+        | Formal_Floating_Point
+        | Formal_Fixed_Point;
+        -- TODO(2022): Formal_Array, Formal_Access, Formal_Private, Formal_Derived,
+        --   Formal_Interface, Formal_Incomplete
+    Formal_Subprogram_Default ::=               -- "is <>" | "is Name" | (none)
+          Name
+        | Box
+        | No_Default;
+    Box        => ;
+    No_Default => ;
+
+    Generic_Instantiation =>
+          Generic_Unit          : Name,         -- structural
+          Associations          : Association_S, -- structural
+          Expanded_Declarations : Declaration_S;-- semantic (the instantiated spec)  [DIANA]
+
+
+    -- =======================================================================
+    -- Aspects & attribute-definition clauses → ONE construct         [Instr]
+    --   "with Size => 8" and "for T'Size use 8;" both become a Semantic_Property,
+    --   distinguished only by Origin (plus the inherited Source_Position).
+    -- =======================================================================
+
+    Semantic_Property =>
+          Property_Name  : Name,                -- structural (aspect/attribute identifier)
+          Property_Value : Object_Definition,   -- structural (Void = boolean aspect, defaults True)
+          Origin         : Property_Origin;     -- structural
+    Property_Origin ::= From_Aspect | From_Attribute_Clause;
+    From_Aspect          => ;
+    From_Attribute_Clause => ;
+
+    -- Representation clauses that are NOT aspect-equivalent (record layout, ...)
+    Representation_Clause ::=                    -- [Ada 22 RM 13]
+          Record_Representation
+        | Address_Clause
+        | Code_Statement;
+    Record_Representation =>
+          Name           : Name,
+          Alignment      : Object_Definition,
+          Component_Reps : Component_Rep_S;
+    Component_Rep =>
+          Name     : Name,
+          Position : Expression,
+          Range    : Range;
+    Address_Clause =>
+          Name    : Name,
+          Address : Expression;
+    Code_Statement =>
+          Subtype_Mark : Name,
+          Aggregate    : Expression;
+
+
+    -- =======================================================================
+    -- Pragmas                                               [Ada 22 RM 2.8]
+    -- =======================================================================
+
+    Pragma =>
+          Name      : Name,
+          Arguments : Association_S;
+
+
+    -- =======================================================================
+    -- Operators  (the "Operator" private type's value set; encoded as the
+    -- Prefix of a Function_Call). Carried over from Rev 3 OP_CLASS.   [DIANA]
+    -- =======================================================================
+
+    Operator ::=
+          Op_And | Op_Or | Op_Xor
+        | Op_Equal | Op_Not_Equal
+        | Op_Less | Op_Less_Equal | Op_Greater | Op_Greater_Equal
+        | Op_Plus | Op_Minus | Op_Concatenate
+        | Op_Unary_Plus | Op_Unary_Minus
+        | Op_Absolute | Op_Not
+        | Op_Multiply | Op_Divide | Op_Modulo | Op_Remainder | Op_Exponentiate;
+    Op_And            => ;   Op_Or             => ;   Op_Xor          => ;
+    Op_Equal          => ;   Op_Not_Equal      => ;
+    Op_Less           => ;   Op_Less_Equal     => ;
+    Op_Greater        => ;   Op_Greater_Equal  => ;
+    Op_Plus           => ;   Op_Minus          => ;   Op_Concatenate  => ;
+    Op_Unary_Plus     => ;   Op_Unary_Minus    => ;
+    Op_Absolute       => ;   Op_Not            => ;
+    Op_Multiply       => ;   Op_Divide         => ;
+    Op_Modulo         => ;   Op_Remainder      => ;   Op_Exponentiate => ;
+
+
+    -- =======================================================================
+    -- Static-value model (external rep of the Value private type)    [DIANA]
+    -- =======================================================================
+
+    Static_Value ::=
+          No_Value
+        | String_Value
+        | Boolean_Value
+        | Integer_Value
+        | Real_Value;
+    No_Value      => ;
+    String_Value  => Text   : String;
+    Boolean_Value => Flag   : Boolean;
+    Integer_Value => Whole  : Integer;
+    Real_Value    => Number : Rational;
+
+
+    -- =======================================================================
+    -- The universal empty node                                      [DIANA]
+    -- =======================================================================
+
+    Void => ;
+
+
+    -- =======================================================================
+    -- Sequence carriers ("_S"), grouped under Element_List          [DIANA]
+    -- =======================================================================
+
+    Element_List ::=
+          Compilation_Unit_S
+        | Context_Element_S
+        | Declaration_S
+        | Item_S
+        | Defining_Name_S
+        | Name_S
+        | Expression_S
+        | Association_S
+        | Statement_S
+        | Alternative_S
+        | Choice_S
+        | Conditional_Clause_S
+        | Component_S
+        | Variant_S
+        | Discriminant_S
+        | Discrete_Range_S
+        | Parameter_S
+        | Generic_Formal_S
+        | Component_Rep_S
+        | Semantic_Property_S;
+
+    Compilation_Unit_S   => List : Seq Of Compilation_Unit;
+    Context_Element_S    => List : Seq Of Context_Element;
+    Declaration_S        => List : Seq Of Declaration;
+    Item_S               => List : Seq Of Item;
+    Item ::= Declaration | Subprogram_Body | Package_Body | Task_Body;
+    Defining_Name_S      => List : Seq Of Defining_Name;
+    Name_S               => List : Seq Of Name;
+    Expression_S         => List : Seq Of Expression;
+    Association_S        => List : Seq Of Association;
+    Statement_S          => List : Seq Of Statement;
+    Alternative_S        => List : Seq Of Alternative;
+    Choice_S             => List : Seq Of Choice;
+    Choice ::= Expression | Discrete_Range | Others_Choice;
+    Others_Choice => ;
+    Conditional_Clause_S => List : Seq Of Conditional_Clause;
+    Component_S          => List : Seq Of Component;
+    Variant_S            => List : Seq Of Variant;
+    Discriminant_S       => List : Seq Of Discriminant;
+    Discriminant =>
+          Names        : Defining_Name_S,
+          Subtype_Mark : Name,
+          Default      : Object_Definition;
+    Discrete_Range_S     => List : Seq Of Discrete_Range;
+    Parameter_S          => List : Seq Of Parameter;
+    Generic_Formal_S     => List : Seq Of Generic_Formal;
+    Component_Rep_S      => List : Seq Of Component_Rep;
+    Semantic_Property_S  => List : Seq Of Semantic_Property;
+
+
+    -- =======================================================================
+    -- Optional ("_Void") helper classes
+    -- =======================================================================
+
+    Range_Void ::= Range | Void;
+
+End;
