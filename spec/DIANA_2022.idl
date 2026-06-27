@@ -225,14 +225,14 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Subprogram_Name =>
           Specification    : Header,                 -- semantic
-          Body             : Subprogram_Body_Description, -- semantic
+          Completion             : Subprogram_Body_Description, -- semantic
           Location         : Location,               -- semantic
           Stub             : Defining_Occurrence,    -- semantic
           First_Definition : Defining_Occurrence;    -- semantic
 
     Package_Name =>
           Specification    : Package_Specification,  -- semantic
-          Body             : Package_Body_Description, -- semantic
+          Completion             : Package_Body_Description, -- semantic
           First_Definition : Defining_Occurrence;    -- semantic
 
     -- (remaining Defining_Name members: attributes elided in v0.1) -- TODO
@@ -312,7 +312,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Operator : Membership_Op,
           Tested   : Type_Or_Range;
     Membership_Op ::= In_Set | Not_In_Set;
-    Type_Or_Range ::= Range | Name;            -- TODO(2022): membership choice lists
+    Type_Or_Range ::= Range_Bounds | Name;            -- TODO(2022): membership choice lists
 
     -- ----- Ada 2012 / 2022 expression forms ----------------------------------
 
@@ -525,7 +525,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Condition : Expression;
     For_Loop =>                                 -- "for" / "for of" loops, optionally parallel
           Iterator : Iterator_Specification,    -- range or container; carries reverse + filter
-          Parallel : Parallel_Specification;    -- sequential, or parallel with chunking  [Ada 22 RM 5.5]
+          Parallelism : Parallel_Specification;    -- sequential, or parallel with chunking  [Ada 22 RM 5.5]
     Parallel_Specification ::= Sequential | Parallel_Chunked;
     Sequential       => ;
     Parallel_Chunked =>                         -- "parallel (chunk_specification) for ..."
@@ -651,18 +651,18 @@ Structure DIANA_2022 Root Diana_Node Is
     Enumeration_Type =>
           Literals : Defining_Name_S;
     Signed_Integer_Type =>
-          Range : Range;
+          Bounds : Range_Bounds;
     Modular_Type =>                             -- [Ada 22 RM 3.5.4]  (Ada 95+)
           Modulus : Expression;
     Floating_Point_Type =>
-          Digits     : Expression,
+          Digits_Value     : Expression,
           Real_Range : Range_Void;
     Ordinary_Fixed_Point_Type =>
-          Delta      : Expression,
+          Delta_Value      : Expression,
           Real_Range : Range_Void;
     Decimal_Fixed_Point_Type =>                 -- [Ada 22 RM 3.5.9]
-          Delta      : Expression,
-          Digits     : Expression,
+          Delta_Value      : Expression,
+          Digits_Value     : Expression,
           Real_Range : Range_Void;
 
     -- ----- Access types ------------------------------------  [Ada 22 RM 3.10]
@@ -752,15 +752,15 @@ Structure DIANA_2022 Root Diana_Node Is
     -- =======================================================================
 
     Constraint ::=
-          Range
+          Range_Bounds
         | Range_Constraint_Real
         | Discrete_Range_S
         | Discriminant_Constraint
         | Void;
-    Range =>
+    Range_Bounds =>
           Lower : Expression,
           Upper : Expression;
-    Discrete_Range ::= Constrained_Spec | Range;
+    Discrete_Range ::= Constrained_Spec | Range_Bounds;
     Discriminant_Constraint =>
           Associations : Association_S,
           Normalized   : Expression_S;          -- semantic
@@ -793,7 +793,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Subprogram_Body =>
           Designator : Defining_Occurrence,
           Header     : Header,
-          Body       : Block_Or_Stub;
+          Completion       : Block_Or_Stub;
     Subprogram_Body_Description ::=
           Block_Statement
         | Stub
@@ -830,7 +830,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Private_Declarations : Declaration_S;
     Package_Body =>
           Name : Defining_Name,
-          Body : Block_Or_Stub;
+          Completion : Block_Or_Stub;
     Package_Body_Description ::=
           Block_Statement
         | Stub
@@ -842,7 +842,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Stub => ;
     Subunit =>
           Parent : Name,
-          Body   : Subunit_Body;
+          Completion   : Subunit_Body;
     Subunit_Body ::= Subprogram_Body | Package_Body | Task_Body | Protected_Body;
     Renaming =>
           Renamed : Name;
@@ -861,7 +861,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Declarations : Declaration_S;         -- entry declarations + representation items
     Task_Body =>
           Name : Defining_Name,
-          Body : Block_Or_Stub;
+          Completion : Block_Or_Stub;
 
     -- Protected units  [Ada 22 RM 9.4]  (protected TYPES are Type_Specs — see
     -- Protected_Type. The body holds protected subprograms and entry bodies.)
@@ -878,7 +878,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Family_Index : Entry_Index_Specification, -- Void unless an entry family
           Parameters   : Parameter_S,
           Barrier      : Expression,            -- the "when <barrier>" condition
-          Body         : Block_Statement;       -- declarations + statements + handlers
+          Completion         : Block_Statement;       -- declarations + statements + handlers
     Entry_Index_Specification ::= Entry_Index_Definition | Void;
     Entry_Index_Definition =>                   -- "(for I in discrete_range)"
           Parameter      : Defining_Name,
@@ -1138,7 +1138,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Component_Rep =>
           Name     : Name,
           Position : Expression,
-          Range    : Range;
+          Bit_Range : Range_Bounds;
     Address_Clause =>
           Name    : Name,
           Address : Expression;
@@ -1275,6 +1275,6 @@ Structure DIANA_2022 Root Diana_Node Is
     -- Optional ("_Void") helper classes
     -- =======================================================================
 
-    Range_Void ::= Range | Void;
+    Range_Void ::= Range_Bounds | Void;
 
 End;

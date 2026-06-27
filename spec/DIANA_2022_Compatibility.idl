@@ -224,8 +224,8 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     -- Constraints                                             [DIANA RM 3.5]
     -- =======================================================================
     CONSTRAINT       Renames Constraint;
-    range            Renames Range;
-    RANGE            Renames Range;
+    range            Renames Range_Bounds;
+    RANGE            Renames Range_Bounds;
     DSCRT_RANGE      Renames Discrete_Range;
     DSCRT_RANGE_S    Renames Discrete_Range_S;
     -- RESTRUCTURED: Rev 3 `index` is folded into Array_Type.Index_Ranges;
