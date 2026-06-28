@@ -67,16 +67,17 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     def_op           Renames Defining_Operator;
     def_char         Renames Defining_Character;
 
-    var_id           Renames Object_Name;
+    var_id           Renames Variable_Name;
     const_id         Renames Constant_Name;
     number_id        Renames Number_Name;
     dscrmt_id        Renames Discriminant_Name;
     comp_id          Renames Component_Name;
-    type_id          Renames Type_Name;
+    iteration_id     Renames Iteration_Name;
+    type_id          Renames Full_Type_Name;
     subtype_id       Renames Subtype_Name;
-    enum_id          Renames Enumeration_Name;
+    enum_id          Renames Enumeration_Literal_Name;
     exception_id     Renames Exception_Name;
-    label_id         Renames Label_Name;
+    label_id         Renames Statement_Label_Name;
     named_stm_id     Renames Loop_Block_Name;
     package_id       Renames Package_Name;
     task_body_id     Renames Task_Body_Name;
@@ -85,6 +86,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     attr_id          Renames Attribute_Name;
     pragma_id        Renames Pragma_Name;
     argument_id      Renames Argument_Name;
+    bltn_operator_id Renames Builtin_Operator_Name;
     -- COLLAPSED into one Defining_Name each:
     --   proc_id, function_id        -> Subprogram_Name
     --   in_id, in_out_id, out_id    -> Parameter_Name

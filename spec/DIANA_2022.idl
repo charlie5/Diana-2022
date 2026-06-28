@@ -183,69 +183,128 @@ Structure DIANA_2022 Root Diana_Node Is
     --   Used occurrences (a kind of Name) point back via Definition.
     -- =======================================================================
 
-    Defining_Occurrence ::=
-          Defining_Name
-        | Defining_Operator
-        | Defining_Character;
+    Defining_Occurrence ::= Defining_Name | Defining_Operator | Defining_Character;
 
-    Defining_Name ::=
+    -- Every defining occurrence carries its spelling (hoisted).      [lexical]
+    Defining_Occurrence => Spelling : Symbol_Rep;
+
+    -- A defining operator ("+", ...) is subprogram-like; a defining character
+    -- literal is enumeration-literal-like.
+    Defining_Operator =>                        -- def_op
+          Specification    : Header,
+          Completion       : Subprogram_Body_Description,
+          Location         : Location,
+          Stub             : Defining_Occurrence,
+          First_Definition : Defining_Occurrence;
+    Defining_Character =>                        -- def_char
+          Object_Type    : Type_Spec,
+          Position       : Integer,
+          Representation : Integer;
+
+    Defining_Name ::= Source_Name | Predefined_Name;
+
+    -- ----- Source-program defining names  (Rev 4 SOURCE_NAME) --------------
+    Source_Name ::=
           Object_Name
-        | Constant_Name
-        | Number_Name
-        | Discriminant_Name
-        | Component_Name
-        | Parameter_Name
+        | Enumeration_Literal_Name
         | Type_Name
-        | Subtype_Name
-        | Enumeration_Name
-        | Exception_Name
+        | Unit_Name
         | Label_Name
-        | Loop_Block_Name
-        | Subprogram_Name
-        | Package_Name
-        | Task_Body_Name
         | Entry_Name
-        | Generic_Name
-        | Private_Type_Name
-        | Attribute_Name        -- predefined-environment names
-        | Pragma_Name
-        | Argument_Name;
+        | Exception_Name;
 
-    -- all defining names carry their spelling
-    Defining_Name => Spelling : Symbol_Rep;    -- lexical
+    -- objects, numbers, components, discriminants, parameters, loop parameters
+    Object_Name      ::= Init_Object_Name | Iteration_Name;
+    Init_Object_Name ::=
+          Variable_Name | Constant_Name | Number_Name
+        | Component_Name | Discriminant_Name | Parameter_Name;
+    Variable_Name =>                             -- var_id
+          Object_Type : Type_Spec,
+          Address     : Expression,
+          Object_Def  : Object_Definition;
+    Constant_Name =>                             -- const_id
+          Object_Type      : Type_Spec,
+          Address          : Expression,
+          Object_Def       : Object_Definition,
+          First_Definition : Defining_Occurrence; -- deferred constants
+    Number_Name =>                               -- number_id (a universal type)
+          Object_Type             : Type_Spec,
+          Static_Value_Expression : Expression;
+    Component_Name =>                            -- comp_id
+          Object_Type    : Type_Spec,
+          Initialization : Object_Definition,    -- Void if none
+          Component_Spec : Component_Rep;         -- Void if none
+    Discriminant_Name =>                         -- dscrmt_id
+          Object_Type      : Type_Spec,
+          Initialization   : Object_Definition,  -- Void if none
+          First_Definition : Defining_Occurrence,
+          Component_Spec   : Component_Rep;       -- Void if none
+    Parameter_Name =>                            -- in_id / in_out_id / out_id
+          Object_Type      : Type_Spec,
+          Default          : Object_Definition,  -- Void unless an 'in' default
+          First_Definition : Defining_Occurrence;
+    Iteration_Name =>                            -- iteration_id (a loop parameter)
+          Object_Type : Type_Spec;
 
-    -- representative semantic content (renamed from Rev 3 sm_* attributes):
-    Object_Name =>
-          Object_Type : Type_Spec,              -- semantic
-          Address     : Expression,             -- semantic
-          Object_Def  : Object_Definition;      -- semantic
+    Enumeration_Literal_Name =>                  -- enum_id
+          Object_Type    : Type_Spec,
+          Position       : Integer,              -- base-0 position
+          Representation : Integer;              -- user-supplied rep value
 
-    Constant_Name =>
-          Object_Type      : Type_Spec,         -- semantic
-          Address          : Expression,        -- semantic
-          Object_Def       : Object_Definition, -- semantic
-          First_Definition : Defining_Occurrence;-- semantic (deferred constants)
+    -- types
+    Type_Name ::= Full_Type_Name | Subtype_Name | Private_Type_Name;
+    Full_Type_Name =>                            -- type_id
+          Type_Specification : Type_Spec,
+          First_Definition   : Defining_Occurrence; -- incomplete/full, multiple points
+    Subtype_Name =>                              -- subtype_id
+          Type_Specification : Constrained_Spec;
+    Private_Type_Name =>                         -- private_type_id / l_private_type_id
+          Type_Specification : Type_Spec;        -- the full view
 
-    Type_Name =>
-          Type_Specification : Type_Spec,           -- semantic
-          First_Definition   : Defining_Occurrence; -- semantic (multiple decl points)
+    -- program units
+    Unit_Name ::= Subprogram_Name | Package_Name | Generic_Name | Task_Body_Name;
+    Subprogram_Name =>                           -- proc_id / function_id
+          Specification    : Header,
+          Completion       : Subprogram_Body_Description,
+          Location         : Location,
+          Stub             : Defining_Occurrence,
+          First_Definition : Defining_Occurrence;
+    Package_Name =>                              -- package_id
+          Specification    : Package_Specification,
+          Completion       : Package_Body_Description,
+          Address          : Expression,
+          Stub             : Defining_Occurrence,
+          First_Definition : Defining_Occurrence;
+    Generic_Name =>                              -- generic_id
+          Formals          : Generic_Formal_S,
+          Specification    : Generic_Header,
+          Completion       : Block_Or_Stub,      -- Void under separate compilation
+          Stub             : Defining_Occurrence,
+          First_Definition : Defining_Occurrence;
+    Task_Body_Name =>                            -- task_body_id
+          Type_Specification : Type_Spec,
+          Completion         : Block_Or_Stub,    -- Void under separate compilation
+          Stub               : Defining_Occurrence,
+          First_Definition   : Defining_Occurrence;
 
-    Subtype_Name =>
-          Type_Specification : Constrained_Spec;     -- semantic
+    -- labels, block/loop names
+    Label_Name ::= Statement_Label_Name | Loop_Block_Name;
+    Statement_Label_Name => Statement : Statement;  -- label_id; the labeled statement
+    Loop_Block_Name      => Statement : Statement;  -- named_stm_id; named loop/block
 
-    Subprogram_Name =>
-          Specification    : Header,                 -- semantic
-          Completion             : Subprogram_Body_Description, -- semantic
-          Location         : Location,               -- semantic
-          Stub             : Defining_Occurrence,    -- semantic
-          First_Definition : Defining_Occurrence;    -- semantic
+    Entry_Name =>                                -- entry_id
+          Specification : Header,
+          Address       : Expression;
+    Exception_Name =>                            -- exception_id
+          First_Definition : Defining_Occurrence; -- renaming / multiple decl points
 
-    Package_Name =>
-          Specification    : Package_Specification,  -- semantic
-          Completion             : Package_Body_Description, -- semantic
-          First_Definition : Defining_Occurrence;    -- semantic
-
-    -- (remaining Defining_Name members: attributes elided in v0.1) -- TODO
+    -- ----- Predefined-environment defining names  (Rev 4 PREDEF_NAME) ------
+    Predefined_Name ::=
+          Attribute_Name | Pragma_Name | Argument_Name | Builtin_Operator_Name;
+    Attribute_Name        => ;                   -- attr_id (a predefined attribute)
+    Pragma_Name           => Arguments : Defining_Name_S;  -- pragma_id (its Argument_Names)
+    Argument_Name         => ;                   -- argument_id
+    Builtin_Operator_Name => Operator : Operator;-- bltn_operator_id
 
 
     -- =======================================================================
@@ -390,10 +449,8 @@ Structure DIANA_2022 Root Diana_Node Is
 
     -- 4.1 names
     Name ::=
-          Used_Name
+          Selector_Name             -- Used_Name | Used_Operator | Used_Character (see below)
         | Used_Object
-        | Used_Operator
-        | Used_Character
         | Used_Builtin
         | Indexed_Component
         | Slice
