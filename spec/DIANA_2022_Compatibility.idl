@@ -125,18 +125,22 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     null_access         Renames Null_Literal;
     aggregate           Renames Aggregate;
     allocator           Renames Allocator;
+    qualified_allocator Renames Qualified_Allocator;
+    subtype_allocator   Renames Subtype_Allocator;
     conversion          Renames Type_Conversion;
     qualified           Renames Qualified_Expression;
     parenthesized       Renames Parenthesized_Expression;
     binary              Renames Short_Circuit;
     membership          Renames Membership;
+    range_membership    Renames Range_Membership;
+    type_membership     Renames Type_Membership;
     SHORT_CIRCUIT_OP    Renames Short_Circuit_Op;
     and_then            Renames And_Then;
     or_else             Renames Or_Else;
     MEMBERSHIP_OP       Renames Membership_Op;
     in_op               Renames In_Set;
     not_in              Renames Not_In_Set;
-    EXP_CONSTRAINED     Renames Allocated_Thing;
+    EXP_CONSTRAINED     Renames Allocator;
     named               Renames Named_Association;
     -- COLLAPSED: Rev 3 COMP_ASSOC and PARAM_ASSOC both map to Association;
     --   Rev 3 `assoc` (named parameter association) maps to Named_Association.
@@ -228,12 +232,16 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     -- =======================================================================
     CONSTRAINT       Renames Constraint;
     range            Renames Range_Bounds;
-    RANGE            Renames Range_Bounds;
+    RANGE            Renames Scalar_Range;        -- range | range_attribute
+    range_attribute  Renames Range_Attribute;
     DSCRT_RANGE      Renames Discrete_Range;
     DSCRT_RANGE_S    Renames Discrete_Range_S;
-    -- RESTRUCTURED: Rev 3 `index` is folded into Array_Type.Index_Ranges;
-    --   the Rev 3 real constraints (float/fixed under CONSTRAINT) map to
-    --   Range_Constraint_Real.
+    index_constraint Renames Index_Constraint;
+    float_constraint Renames Float_Constraint;
+    fixed_constraint Renames Fixed_Constraint;
+    -- RESTRUCTURED: Rev 3 `index` is folded into Array_Type.Index_Ranges; a
+    --   subtype used as a discrete range is a Discrete_Subtype wrapper; the Rev 3
+    --   real constraints (float/fixed under CONSTRAINT) are Float_/Fixed_Constraint.
 
 
     -- =======================================================================

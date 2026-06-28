@@ -358,12 +358,9 @@ Structure DIANA_2022 Root Diana_Node Is
           Target  : Name,
           Operand : Expression;
 
-    Allocator =>
-          Allocated : Allocated_Thing;
-
-    Allocated_Thing ::=                         -- new T'(x)  |  new T
-          Expression
-        | Constrained_Spec;
+    Allocator ::= Qualified_Allocator | Subtype_Allocator;   -- [Ada 22 RM 4.8]
+    Qualified_Allocator => Value : Expression;               -- new T'(x)
+    Subtype_Allocator   => Subtype_Indication : Constrained_Spec;  -- new T
 
     Aggregate =>
           Associations    : Association_S,      -- structural
@@ -376,12 +373,16 @@ Structure DIANA_2022 Root Diana_Node Is
           Right    : Expression;
     Short_Circuit_Op ::= And_Then | Or_Else;
 
-    Membership =>
+    Membership ::= Range_Membership | Type_Membership;   -- TODO(2022): membership choice lists
+    Range_Membership =>                         -- "X in L .. U"
           Operand  : Expression,
           Operator : Membership_Op,
-          Tested   : Type_Or_Range;
+          Tested   : Scalar_Range;
+    Type_Membership =>                          -- "X in T"
+          Operand      : Expression,
+          Operator     : Membership_Op,
+          Subtype_Mark : Name;
     Membership_Op ::= In_Set | Not_In_Set;
-    Type_Or_Range ::= Range_Bounds | Name;            -- TODO(2022): membership choice lists
 
     -- ----- Ada 2012 / 2022 expression forms ----------------------------------
 
@@ -704,7 +705,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Mark       : Name,
           Constraint : Constraint;
 
-    Universal_Type ::= Universal_Integer | Universal_Real | Universal_Fixed;
+    Universal_Type    ::= Universal_Integer | Universal_Real | Universal_Fixed;
+    Universal_Integer => ;  Universal_Real => ;  Universal_Fixed => ;
 
     -- ----- Scalar types -------------------------------------  [Ada 22 RM 3.5]
     Scalar_Type      ::= Discrete_Type | Real_Type;
@@ -721,14 +723,14 @@ Structure DIANA_2022 Root Diana_Node Is
           Modulus : Expression;
     Floating_Point_Type =>
           Digits_Value     : Expression,
-          Real_Range : Range_Void;
+          Real_Range : Scalar_Range;
     Ordinary_Fixed_Point_Type =>
           Delta_Value      : Expression,
-          Real_Range : Range_Void;
+          Real_Range : Scalar_Range;
     Decimal_Fixed_Point_Type =>                 -- [Ada 22 RM 3.5.9]
           Delta_Value      : Expression,
           Digits_Value     : Expression,
-          Real_Range : Range_Void;
+          Real_Range : Scalar_Range;
 
     -- ----- Access types ------------------------------------  [Ada 22 RM 3.10]
     Access_Type ::= Access_To_Object | Access_To_Subprogram;
@@ -736,6 +738,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Pool_Specific            -- access T
         | General_Access_All       -- access all T
         | General_Access_Constant; -- access constant T
+    Pool_Specific => ;  General_Access_All => ;  General_Access_Constant => ;
     Access_To_Object =>
           Designated   : Type_Spec,
           Access_Kind  : Object_Access_Kind,
@@ -772,6 +775,8 @@ Structure DIANA_2022 Root Diana_Node Is
         | Synchronized_Interface
         | Task_Interface
         | Protected_Interface;
+    Ordinary_Interface => ;  Limited_Interface => ;  Synchronized_Interface => ;
+    Task_Interface     => ;  Protected_Interface => ;
     Task_Type =>                                -- [Ada 22 RM 9.1]   (operations: TODO(2022))
           Definition : Task_Definition;
     Protected_Type =>                           -- [Ada 22 RM 9.4]   (operations: TODO(2022))
@@ -824,15 +829,27 @@ Structure DIANA_2022 Root Diana_Node Is
     -- =======================================================================
 
     Constraint ::=
-          Range_Bounds
-        | Range_Constraint_Real
-        | Discrete_Range_S
+          Discrete_Range          -- a single range or discrete subtype (range constraint)
+        | Index_Constraint        -- "(dr, dr, ...)" — an array index constraint
+        | Real_Constraint         -- float / fixed accuracy
         | Discriminant_Constraint
         | Void;
+    -- A discrete range nests under Constraint (Constraint > Discrete_Range >
+    -- Scalar_Range > Range_Bounds), so each has a single parent.
+    Discrete_Range ::= Scalar_Range | Discrete_Subtype;
+    Scalar_Range   ::= Range_Bounds | Range_Attribute;
     Range_Bounds =>
           Lower : Expression,
           Upper : Expression;
-    Discrete_Range ::= Constrained_Spec | Range_Bounds;
+    Range_Attribute =>                          -- T'Range  /  T'Range(N)
+          Prefix : Name;
+    Discrete_Subtype =>                          -- a subtype indication used as a discrete range
+          Subtype_Indication : Constrained_Spec;
+    Index_Constraint =>                          -- (discrete_range, ...)
+          Ranges : Discrete_Range_S;
+    Real_Constraint ::= Float_Constraint | Fixed_Constraint;
+    Float_Constraint => Digits_Value : Expression, Real_Range : Scalar_Range;  -- Void Real_Range allowed
+    Fixed_Constraint => Delta_Value  : Expression, Real_Range : Scalar_Range;
     Discriminant_Constraint =>
           Associations : Association_S,
           Normalized   : Expression_S;          -- semantic
@@ -1330,6 +1347,5 @@ Structure DIANA_2022 Root Diana_Node Is
     -- Optional ("_Void") helper classes
     -- =======================================================================
 
-    Range_Void ::= Range_Bounds | Void;
 
 End;
