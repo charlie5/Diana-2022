@@ -8,12 +8,30 @@ The goal is to design an updated, **backwards-compatible DIANA intermediate repr
 
 ## Current state (read before assuming structure)
 
-The repository is at the **design stage**. There is **no source code, build system, or test suite yet**. The substantive work so far lives in two files:
+The **spec is substantially complete** and the **interpretive harness has been started** (a working first increment). Key locations:
 
+- `spec/DIANA_2022.idl` — the canonical IR spec (single-parent partitioned, referentially complete; verified by the tools below).
+- `spec/DIANA_2022_Compatibility.idl` — the Rev 3/4 `Renames` alias layer.
+- `harness/` — the Ada (GNAT) interpretive harness (see "Building & running the harness").
+- `tools/check_partition.pl`, `tools/check_resolve.pl` — invariant checkers (single-parent partition; referential completeness). They exit non-zero on failure.
 - `Initial_instructions.md` — the authoritative requirements and style rules. Treat it as the spec for this project.
-- `Copilot_notes.txt` — a chat transcript with a *draft* `DIANA_2022` core (units, declarations, expressions, statements, unified semantic properties) and a partial type + generic system. It is a starting point, **not** a committed spec, and it is incomplete (concurrency, full expression set, full contracts/aspects, and the harness are all still open). Verify any claim from it against `Initial_instructions.md` before relying on it.
+- `Copilot_notes.txt` — an early *draft* core. Superseded by `spec/DIANA_2022.idl`; verify any claim from it against the spec and `Initial_instructions.md`.
 
-`.gitignore` excludes `*.o` and `*.ali` (GNAT Ada Library Information), indicating the implementation/harness is intended to be **Ada (GNAT)**.
+## Building & running the harness
+
+The harness is an Ada 2022 / GNAT project under `harness/`:
+
+```sh
+gprbuild -P harness/diana_harness.gpr   # build (object dir harness/obj, exec harness/diana_harness)
+harness/diana_harness                   # run the separate-compilation demo
+```
+
+Architecture (decided with Shark8 — see the header of `harness/src/diana.ads`):
+- The whole program library is **one** `Ada.Containers.Indefinite_Multiway_Trees` of `Diana.Node'Class`. Parent/child edges are the *structural* attributes; the tree root's children are per-compilation subtrees.
+- IDL classes become abstract intermediate tagged types; concrete node kinds are leaves (single inheritance == the single-parent partition). "Is X an Expression?" is just `X in Expression'Class`.
+- Semantic cross-links are tree **`Cursor`s** (the in-memory form of a symbolic external label).
+- A `with`'ed-but-unloaded unit is a `Pending_Unit` **stub** child of the root that records its inbound `Referrer`s. `Diana.Library.Merge` replaces the stub with the real compilation and **fixes up those referrers in place**; `Require_All_Resolved` raises `Missing_Compilation` if any stub remains (the "error out on missing separate compilation" requirement).
+- The full node set (`Diana.Nodes`) is intended to be **generated from `spec/DIANA_2022.idl`**; only the kinds the merge machinery needs are hand-written so far.
 
 ## The IDL dialect — this is a frequent mistake
 
@@ -65,9 +83,11 @@ These are deliberate modeling choices that span the whole IR — preserve them:
 
 ## Test harness requirements
 
-When the interpretive harness is built, it must:
-- Execute a given DIANA tree, and **error out if execution cannot be completed** (e.g. a missing separate compilation unit).
-- Provide a way to **merge in separately-compiled DIANA**.
+The interpretive harness must:
+- Execute a given DIANA tree, and **error out if execution cannot be completed** (e.g. a missing separate compilation unit) — demonstrated by `Require_All_Resolved` / `Missing_Compilation`.
+- Provide a way to **merge in separately-compiled DIANA** — demonstrated by `Diana.Library.Merge`.
+
+Still open: the tree interpreter / execution semantics, and generating the full `Diana.Nodes` set from the IDL. The current `diana_harness.adb` driver exercises the merge / error-on-missing path end to end.
 
 ## Reference sources
 

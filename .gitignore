@@ -4,6 +4,10 @@
 # Ada Library Information
 *.ali
 
+# Harness build outputs (gprbuild object dir + linked executable)
+harness/obj/
+harness/diana_harness
+
 # Large reference PDFs (public-domain DTIC reports; fetch locally as needed)
 references/*.pdf
 

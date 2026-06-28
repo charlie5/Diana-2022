@@ -1,0 +1,18 @@
+--  GNAT project for the DIANA_2022 interpretive harness.
+project Diana_Harness is
+
+   for Source_Dirs use ("src");
+   for Object_Dir  use "obj";
+   for Exec_Dir    use ".";
+   for Main        use ("diana_harness.adb");
+
+   package Compiler is
+      for Default_Switches ("Ada") use
+        ("-g", "-gnat2022", "-gnatwa", "-gnata", "-gnatyM100");
+   end Compiler;
+
+   package Builder is
+      for Switches ("Ada") use ("-j0");
+   end Builder;
+
+end Diana_Harness;
