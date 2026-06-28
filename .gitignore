@@ -6,3 +6,5 @@
 
 # Large reference PDFs (public-domain DTIC reports; fetch locally as needed)
 references/*.pdf
+
+Ada-to-DIANA-to-IRIS-front-end
