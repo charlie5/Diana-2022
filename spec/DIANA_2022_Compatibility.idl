@@ -33,7 +33,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     comp_unit       Renames Compilation_Unit;
     CONTEXT_ELEM    Renames Context_Element;
     with            Renames With_Clause;
-    UNIT_BODY       Renames Unit_Body;
+    UNIT_BODY       Renames All_Declaration;
     -- NOTE: Rev 3 `context` (a node holding Seq Of CONTEXT_ELEM) is folded into
     --   Compilation_Unit.Context : Context_Element_S — no separate node.
 
@@ -54,8 +54,9 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     rename              Renames Renaming;
     use                 Renames Use_Clause;
     OBJECT_DEF          Renames Object_Definition;
-    -- COLLAPSED: Rev 3 `constant` and `var` both map to Object_Declaration
-    --   (constant-ness is carried as a property, not a separate node).
+    constant            Renames Constant_Declaration;
+    var                 Renames Variable_Declaration;
+    -- (Object_Declaration is now a class: Constant_Declaration | Variable_Declaration.)
 
 
     -- =======================================================================
@@ -251,7 +252,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     BLOCK_STUB           Renames Block_Or_Stub;
     stub                 Renames Stub;
     subunit              Renames Subunit;
-    SUBUNIT_BODY         Renames Subunit_Body;
+    SUBUNIT_BODY         Renames Proper_Body;
     PACKAGE_DEF          Renames Package_Definition;
     package_spec         Renames Package_Specification;
     PACKAGE_SPEC         Renames Package_Specification;
@@ -322,7 +323,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     -- =======================================================================
     -- NON-1:1 MAPPINGS — summary (no alias lines; documented above in place)
     -- -----------------------------------------------------------------------
-    --   constant, var                    -> Object_Declaration       (collapse)
+    --   constant -> Constant_Declaration, var -> Variable_Declaration (split)
     --   proc_id, function_id             -> Subprogram_Name          (collapse)
     --   in_id, in_out_id, out_id         -> Parameter_Name           (collapse)
     --   private_type_id, l_private_type_id -> Private_Type_Name       (collapse)

@@ -55,7 +55,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Compilation
         | Compilation_Unit
         | Context_Element
-        | Declaration
+        | All_Declaration
         | Defining_Occurrence
         | Type_Spec
         | Constraint
@@ -79,18 +79,15 @@ Structure DIANA_2022 Root Diana_Node Is
           Units : Compilation_Unit_S;
 
     Compilation_Unit =>
-          Context   : Context_Element_S,        -- structural
-          Unit_Body : Unit_Body;                -- structural
+          Context      : Context_Element_S,     -- structural
+          Library_Item : All_Declaration;       -- structural (Void = a pragma-only unit)
 
-    Unit_Body ::=
-          Subprogram_Declaration
-        | Subprogram_Body
-        | Package_Declaration
-        | Package_Body
-        | Subunit
-        | Generic_Declaration
-        | Generic_Instantiation
-        | Void;                 -- a unit consisting only of pragmas
+    -- The declarative universe: declarations, bodies, and subunits (Rev 4 ALL_DECL).
+    -- A compilation unit's library item is just one of these; which library items
+    -- are legal is a semantic rule, not a structural one.
+    All_Declaration ::= Item | Subunit;
+    Item        ::= Declaration | Proper_Body | Entry_Body;
+    Proper_Body ::= Subprogram_Body | Package_Body | Task_Body | Protected_Body;
 
     Context_Element ::=
           With_Clause
@@ -106,9 +103,16 @@ Structure DIANA_2022 Root Diana_Node Is
     -- =======================================================================
 
     Declaration ::=
-          Object_Declaration
-        | Number_Declaration
-        | Type_Declaration
+          Object_Or_Number_Declaration
+        | Identifier_Declaration
+        | Representation_Clause
+        | Use_Or_Pragma;
+
+    -- Nested declaration classes — single parent per node  (Rev 4 DECL family).
+    Object_Or_Number_Declaration ::= Object_Declaration | Number_Declaration;
+    Object_Declaration           ::= Constant_Declaration | Variable_Declaration;
+    Identifier_Declaration ::=
+          Type_Declaration
         | Subtype_Declaration
         | Subprogram_Declaration
         | Package_Declaration
@@ -117,9 +121,11 @@ Structure DIANA_2022 Root Diana_Node Is
         | Exception_Declaration
         | Deferred_Constant_Declaration
         | Renaming_Declaration
-        | Representation_Clause
-        | Use_Clause
-        | Pragma;
+        | Generic_Instantiation;             -- "package X is new G(...)"  (single home)
+    Use_Or_Pragma ::= Use_Clause | Declaration_Pragma;
+    Declaration_Pragma =>                       -- a pragma in a declarative position
+          Name      : Name,
+          Arguments : Association_S;
 
     -- Declarations / types that may carry aspects or attribute-definition
     -- clauses (semantic). Attached to these base classes for now; refine to
@@ -128,8 +134,12 @@ Structure DIANA_2022 Root Diana_Node Is
     Type_Spec   => Properties : Semantic_Property_S;   -- semantic
 
     -- 3.3.1 objects and named numbers                     [Ada 22 RM 3.3.1]
-    Object_Declaration =>
-          Names          : Defining_Name_S,     -- structural (the Object_Names)
+    Constant_Declaration =>                     -- [Ada 22 RM 3.3.1]
+          Names          : Defining_Name_S,     -- structural (the defined Constant_Names)
+          Object_Subtype : Type_Spec,           -- structural
+          Initialization : Object_Definition;   -- structural (Void if none)
+    Variable_Declaration =>
+          Names          : Defining_Name_S,     -- structural (the defined Object_Names)
           Object_Subtype : Type_Spec,           -- structural
           Initialization : Object_Definition;   -- structural (Void if none)
 
@@ -733,10 +743,17 @@ Structure DIANA_2022 Root Diana_Node Is
 
     -- records: components, variants, discriminants            [Ada 22 RM 3.7, 3.8]
     Component ::=
-          Object_Declaration
+          Component_Declaration
         | Variant_Part
         | Null_Component
-        | Pragma;
+        | Component_Pragma;
+    Component_Declaration =>                     -- a record component_declaration  [Ada 22 RM 3.8]
+          Names          : Defining_Name_S,
+          Object_Subtype : Type_Spec,
+          Initialization : Object_Definition;   -- Void if none
+    Component_Pragma =>                          -- a pragma among record components
+          Name      : Name,
+          Arguments : Association_S;
     Null_Component => ;
     Variant_Part =>
           Discriminant : Name,
@@ -841,9 +858,8 @@ Structure DIANA_2022 Root Diana_Node Is
     Block_Or_Stub ::= Block_Statement | Stub;
     Stub => ;
     Subunit =>
-          Parent : Name,
-          Completion   : Subunit_Body;
-    Subunit_Body ::= Subprogram_Body | Package_Body | Task_Body | Protected_Body;
+          Parent     : Name,
+          Completion : Proper_Body;             -- a subunit's body is a proper body
     Renaming =>
           Renamed : Name;
     Location ::= Expression | Void;
@@ -867,12 +883,7 @@ Structure DIANA_2022 Root Diana_Node Is
     -- Protected_Type. The body holds protected subprograms and entry bodies.)
     Protected_Body =>
           Name       : Defining_Name,
-          Operations : Protected_Operation_S;
-    Protected_Operation ::=
-          Subprogram_Declaration
-        | Subprogram_Body
-        | Entry_Body
-        | Pragma;
+          Operations : Item_S;                  -- protected subprograms + entry bodies (legality is semantic)
     Entry_Body =>                               -- [Ada 22 RM 9.5.2]
           Name         : Defining_Name,
           Family_Index : Entry_Index_Specification, -- Void unless an entry family
@@ -1225,7 +1236,6 @@ Structure DIANA_2022 Root Diana_Node Is
         | Expression_Alternative_S
         | Select_Alternative_S
         | Parallel_Arm_S
-        | Protected_Operation_S
         | Contract_Case_S
         | Component_S
         | Variant_S
@@ -1240,7 +1250,6 @@ Structure DIANA_2022 Root Diana_Node Is
     Context_Element_S    => List : Seq Of Context_Element;
     Declaration_S        => List : Seq Of Declaration;
     Item_S               => List : Seq Of Item;
-    Item ::= Declaration | Subprogram_Body | Package_Body | Task_Body | Protected_Body;
     Defining_Name_S      => List : Seq Of Defining_Name;
     Name_S               => List : Seq Of Name;
     Expression_S         => List : Seq Of Expression;
@@ -1255,7 +1264,6 @@ Structure DIANA_2022 Root Diana_Node Is
     Expression_Alternative_S => List : Seq Of Expression_Alternative;
     Select_Alternative_S     => List : Seq Of Select_Alternative;
     Parallel_Arm_S           => List : Seq Of Parallel_Arm;
-    Protected_Operation_S    => List : Seq Of Protected_Operation;
     Contract_Case_S          => List : Seq Of Contract_Case;
     Component_S          => List : Seq Of Component;
     Variant_S            => List : Seq Of Variant;
