@@ -67,8 +67,8 @@ Structure DIANA_2022 Root Diana_Node Is
         | Element_List;         -- the "_S" sequence carriers (grouped, see end)
 
     Diana_Node =>
-          Source_Position : Source_Position,    -- lexical
-          Comments        : Comments;           -- lexical
+          Source_Position : Source_Position,  -- lexical
+          Comments        : Comments;         -- lexical
 
 
     -- =======================================================================
@@ -79,8 +79,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Units : Compilation_Unit_S;
 
     Compilation_Unit =>
-          Context      : Context_Element_S,     -- structural
-          Library_Item : All_Declaration;       -- structural (Void = a pragma-only unit)
+          Context      : Context_Element_S,  -- structural
+          Library_Item : All_Declaration;    -- structural (Void = a pragma-only unit)
 
     -- The declarative universe: declarations, bodies, and subunits (Rev 4 ALL_DECL).
     -- A compilation unit's library item is just one of these; which library items
@@ -133,31 +133,31 @@ Structure DIANA_2022 Root Diana_Node Is
 
     -- 3.3.1 objects and named numbers                     [Ada 22 RM 3.3.1]
     Constant_Declaration =>                     -- [Ada 22 RM 3.3.1]
-          Names          : Defining_Name_S,     -- structural (the defined Constant_Names)
-          Object_Subtype : Type_Spec,           -- structural
-          Initialization : Expression;   -- structural (Void if none)
+          Names          : Defining_Name_S,  -- structural (the defined Constant_Names)
+          Object_Subtype : Type_Spec,        -- structural
+          Initialization : Expression;       -- structural (Void if none)
     Variable_Declaration =>
-          Names          : Defining_Name_S,     -- structural (the defined Object_Names)
-          Object_Subtype : Type_Spec,           -- structural
-          Initialization : Expression;   -- structural (Void if none)
+          Names          : Defining_Name_S,  -- structural (the defined Object_Names)
+          Object_Subtype : Type_Spec,        -- structural
+          Initialization : Expression;       -- structural (Void if none)
 
     -- Optional initializers/conditions are now typed Expression directly; the
     -- universal node Void stands in when absent. Object renamings are distinct
     -- Renaming_Declarations, not an init-slot variant.
 
     Number_Declaration =>
-          Names                   : Defining_Name_S,     -- structural
-          Static_Value_Expression : Expression;          -- structural (universal-typed)
+          Names                   : Defining_Name_S,  -- structural
+          Static_Value_Expression : Expression;       -- structural (universal-typed)
 
     -- 3.2.1 type & subtype declarations                   [Ada 22 RM 3.2.1]
     Type_Declaration =>
-          Name          : Defining_Name,        -- structural
-          Discriminants : Discriminant_Part,    -- structural (Void if none)
-          Definition    : Type_Spec;            -- structural
+          Name          : Defining_Name,      -- structural
+          Discriminants : Discriminant_Part,  -- structural (Void if none)
+          Definition    : Type_Spec;          -- structural
 
     Subtype_Declaration =>
-          Name                    : Defining_Name,       -- structural
-          Subtype_Mark_Constraint : Constrained_Spec;    -- structural
+          Name                    : Defining_Name,     -- structural
+          Subtype_Mark_Constraint : Constrained_Spec;  -- structural
 
     Exception_Declaration =>                   -- [Ada 22 RM 11.1]
           Names : Defining_Name_S;
@@ -222,40 +222,40 @@ Structure DIANA_2022 Root Diana_Node Is
           Object_Type      : Type_Spec,
           Address          : Expression,
           Object_Def       : Expression,
-          First_Definition : Defining_Occurrence; -- deferred constants
+          First_Definition : Defining_Occurrence;  -- deferred constants
     Number_Name =>                               -- number_id (a universal type)
           Object_Type             : Type_Spec,
           Static_Value_Expression : Expression;
     Component_Name =>                            -- comp_id
           Object_Type    : Type_Spec,
-          Initialization : Expression,    -- Void if none
-          Component_Spec : Component_Rep;         -- Void if none
+          Initialization : Expression,     -- Void if none
+          Component_Spec : Component_Rep;  -- Void if none
     Discriminant_Name =>                         -- dscrmt_id
           Object_Type      : Type_Spec,
-          Initialization   : Expression,  -- Void if none
+          Initialization   : Expression,           -- Void if none
           First_Definition : Defining_Occurrence,
-          Component_Spec   : Component_Rep;       -- Void if none
+          Component_Spec   : Component_Rep;        -- Void if none
     Parameter_Name =>                            -- in_id / in_out_id / out_id
           Object_Type      : Type_Spec,
-          Default          : Expression,  -- Void unless an 'in' default
+          Default          : Expression,           -- Void unless an 'in' default
           First_Definition : Defining_Occurrence;
     Iteration_Name =>                            -- iteration_id (a loop parameter)
           Object_Type : Type_Spec;
 
     Enumeration_Literal_Name =>                  -- enum_id
           Object_Type    : Type_Spec,
-          Position       : Integer,              -- base-0 position
-          Representation : Integer;              -- user-supplied rep value
+          Position       : Integer,    -- base-0 position
+          Representation : Integer;    -- user-supplied rep value
 
     -- types
     Type_Name ::= Full_Type_Name | Subtype_Name | Private_Type_Name;
     Full_Type_Name =>                            -- type_id
           Type_Specification : Type_Spec,
-          First_Definition   : Defining_Occurrence; -- incomplete/full, multiple points
+          First_Definition   : Defining_Occurrence;  -- incomplete/full, multiple points
     Subtype_Name =>                              -- subtype_id
           Type_Specification : Constrained_Spec;
     Private_Type_Name =>                         -- private_type_id / l_private_type_id
-          Type_Specification : Type_Spec;        -- the full view
+          Type_Specification : Type_Spec;  -- the full view
 
     -- program units
     Unit_Name ::= Subprogram_Name | Package_Name | Generic_Name | Task_Body_Name;
@@ -279,7 +279,7 @@ Structure DIANA_2022 Root Diana_Node Is
           First_Definition : Defining_Occurrence;
     Task_Body_Name =>                            -- task_body_id
           Type_Specification : Type_Spec,
-          Completion         : Unit_Completion,    -- Void under separate compilation
+          Completion         : Unit_Completion,      -- Void under separate compilation
           Stub               : Defining_Occurrence,
           First_Definition   : Defining_Occurrence;
 
@@ -292,7 +292,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Specification : Header,
           Address       : Expression;
     Exception_Name =>                            -- exception_id
-          First_Definition : Defining_Occurrence; -- renaming / multiple decl points
+          First_Definition : Defining_Occurrence;  -- renaming / multiple decl points
 
     -- ----- Predefined-environment defining names  (Rev 4 PREDEF_NAME) ------
     Predefined_Name ::=
@@ -331,15 +331,15 @@ Structure DIANA_2022 Root Diana_Node Is
 
     -- hoisted to all expressions
     Expression =>
-          Expression_Type : Type_Spec,          -- semantic
-          Static_Value    : Value;              -- semantic
+          Expression_Type : Type_Spec,  -- semantic
+          Static_Value    : Value;      -- semantic
 
     Numeric_Literal =>
-          Literal_Image : Number_Rep;           -- lexical
+          Literal_Image : Number_Rep;  -- lexical
 
     String_Literal =>
-          Literal_Image : Symbol_Rep,           -- lexical
-          Constraint    : Constraint;           -- semantic
+          Literal_Image : Symbol_Rep,  -- lexical
+          Constraint    : Constraint;  -- semantic
 
     Null_Literal => ;                          -- the "null" access value
 
@@ -359,16 +359,17 @@ Structure DIANA_2022 Root Diana_Node Is
     Subtype_Allocator   => Subtype_Indication : Constrained_Spec;  -- new T
 
     Aggregate =>
-          Associations    : Association_S,      -- structural
-          Square_Brackets : Boolean,            -- lexical  ([ ] vs ( ) array aggregate)
-          Normalized      : Expression_S;       -- semantic
+          Associations    : Association_S,  -- structural
+          Square_Brackets : Boolean,        -- lexical  ([ ] vs ( ) array aggregate)
+          Normalized      : Expression_S;   -- semantic
 
     Short_Circuit =>
           Left     : Expression,
           Operator : Short_Circuit_Op,
           Right    : Expression;
     Short_Circuit_Op ::= And_Then | Or_Else;
-    And_Then => ;  Or_Else => ;
+    And_Then => ;
+    Or_Else  => ;
 
     Membership ::= Range_Membership | Type_Membership;   -- TODO(2022): membership choice lists
     Range_Membership =>                         -- "X in L .. U"
@@ -380,7 +381,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Operator     : Membership_Op,
           Subtype_Mark : Name;
     Membership_Op ::= In_Set | Not_In_Set;
-    In_Set => ;  Not_In_Set => ;
+    In_Set     => ;
+    Not_In_Set => ;
 
     -- ----- Ada 2012 / 2022 expression forms ----------------------------------
 
@@ -389,7 +391,7 @@ Structure DIANA_2022 Root Diana_Node Is
     If_Expression =>
           Clauses : Expression_Clause_S;
     Expression_Clause =>
-          Condition : Expression,        -- Void condition = the "else" result
+          Condition : Expression,  -- Void condition = the "else" result
           Result    : Expression;
     Case_Expression =>
           Selector     : Expression,
@@ -404,7 +406,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Iterator   : Iterator_Specification,
           Predicate  : Expression;
     Quantifier_Kind ::= For_All | For_Some;
-    For_All => ;  For_Some => ;
+    For_All  => ;
+    For_Some => ;
 
     -- Iterator specifications — shared by quantified expressions and the
     -- iterated associations in aggregates (loops may adopt this later).
@@ -414,38 +417,38 @@ Structure DIANA_2022 Root Diana_Node Is
           Parameter      : Defining_Name,
           Discrete_Range : Discrete_Range,
           Reverse_Order  : Boolean,
-          Filter         : Expression;   -- Void if no "when" filter
+          Filter         : Expression;      -- Void if no "when" filter
     Container_Iterator =>                        -- "X of [reverse] iterable"
           Parameter     : Defining_Name,
           Iterable      : Expression,
           Reverse_Order : Boolean,
-          Filter        : Expression;    -- Void if no "when" filter
+          Filter        : Expression;     -- Void if no "when" filter
 
     -- Declare expressions                                   [Ada 22 RM 4.5.9]
     Declare_Expression =>
-          Declarations : Declaration_S,         -- object / object-renaming declarations
+          Declarations : Declaration_S,  -- object / object-renaming declarations
           Result       : Expression;
 
     -- Reduction expressions ('Reduce / 'Parallel_Reduce)   [Ada 22 RM 4.5.10]
     Reduction_Expression =>
-          Value_Sequence : Expression,          -- an array, iterable, or [ ... ] sequence
-          Reducer        : Name,                -- the combiner subprogram
+          Value_Sequence : Expression,  -- an array, iterable, or [ ... ] sequence
+          Reducer        : Name,        -- the combiner subprogram
           Initial_Value  : Expression,
-          Is_Parallel    : Boolean;             -- 'Parallel_Reduce vs 'Reduce
+          Is_Parallel    : Boolean;     -- 'Parallel_Reduce vs 'Reduce
 
     -- Raise expressions                                      [Ada 22 RM 4.4]
     Raise_Expression =>
           Exception_Name : Name,
-          Message        : Expression;   -- Void if no "with" message
+          Message        : Expression;  -- Void if no "with" message
 
     -- Delta aggregates                                      [Ada 22 RM 4.3.4]
     Delta_Aggregate =>
-          Base   : Expression,                  -- the base record/array value
-          Deltas : Association_S;               -- component => value overrides
+          Base   : Expression,     -- the base record/array value
+          Deltas : Association_S;  -- component => value overrides
 
     -- Container aggregates ( [ ... ] , Aggregate aspect)   [Ada 22 RM 4.3.5]
     Container_Aggregate =>
-          Associations : Association_S;         -- positional / keyed / iterated
+          Associations : Association_S;  -- positional / keyed / iterated
 
     -- 4.1 names
     Name ::=
@@ -486,7 +489,7 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Attribute_Reference =>
           Prefix    : Name,
-          Attribute : Name;                     -- a predefined Attribute_Name
+          Attribute : Name;  -- a predefined Attribute_Name
 
     Attribute_Call =>
           Prefix   : Name,
@@ -494,10 +497,10 @@ Structure DIANA_2022 Root Diana_Node Is
 
     -- 6.4 calls and operators (one node for both)                 [DIANA]
     Function_Call =>
-          Prefix             : Name,            -- structural
-          Actuals            : Association_S,   -- structural
-          Is_Prefix_Notation : Boolean,         -- lexical (infix vs. prefix; conformance)
-          Normalized_Actuals : Expression_S;    -- semantic
+          Prefix             : Name,           -- structural
+          Actuals            : Association_S,  -- structural
+          Is_Prefix_Notation : Boolean,        -- lexical (infix vs. prefix; conformance)
+          Normalized_Actuals : Expression_S;   -- semantic
 
     Target_Name => ;                            -- "@" : the assignment target  [Ada 22 RM 5.2.1]
 
@@ -506,7 +509,7 @@ Structure DIANA_2022 Root Diana_Node Is
         | Named_Association
         | Iterated_Association;
     Positional_Association => Value : Expression;   -- a bare (positional) actual/value
-    Named_Association =>
+    Named_Association      =>
           Choices : Choice_S,
           Actual  : Expression;
     Iterated_Association =>                      -- "for I in R => E" / "for E of A => f(E)"  [Ada 22 RM 4.3.3]
@@ -549,14 +552,14 @@ Structure DIANA_2022 Root Diana_Node Is
     Procedure_Call =>
           Prefix             : Name,
           Actuals            : Association_S,
-          Normalized_Actuals : Expression_S;    -- semantic
+          Normalized_Actuals : Expression_S;   -- semantic
 
     Goto_Statement =>
           Target : Name;
 
     Delay_Statement =>                          -- [Ada 22 RM 9.6]
           Expression : Expression,
-          Until_Form : Boolean;                 -- "delay until" (absolute) vs "delay" (relative)
+          Until_Form : Boolean;     -- "delay until" (absolute) vs "delay" (relative)
 
     Labeled_Statement =>
           Labels    : Defining_Name_S,
@@ -566,12 +569,12 @@ Structure DIANA_2022 Root Diana_Node Is
     -- extended return "return R : T := X do ... end return;".        [Instr]
     Return_Statement =>
           Returned_Object    : Expression,   -- Void for "return;"
-          Handled_Statements : Statement_S;         -- the "do ... end return"; empty if absent
+          Handled_Statements : Statement_S;  -- the "do ... end return"; empty if absent
 
     If_Statement =>
           Clauses : Conditional_Clause_S;
     Conditional_Clause =>
-          Condition  : Expression,       -- Void condition = the "else" arm
+          Condition  : Expression,   -- Void condition = the "else" arm
           Statements : Statement_S;
 
     Case_Statement =>
@@ -590,26 +593,26 @@ Structure DIANA_2022 Root Diana_Node Is
         | While_Loop
         | For_Loop;
     No_Iteration => ;                           -- a bare "loop ... end loop"
-    While_Loop =>
+    While_Loop   =>
           Condition : Expression;
     For_Loop =>                                 -- "for" / "for of" loops, optionally parallel
-          Iterator : Iterator_Specification,    -- range or container; carries reverse + filter
-          Parallelism : Parallel_Specification;    -- sequential, or parallel with chunking  [Ada 22 RM 5.5]
+          Iterator : Iterator_Specification,     -- range or container; carries reverse + filter
+          Parallelism : Parallel_Specification;  -- sequential, or parallel with chunking  [Ada 22 RM 5.5]
     Parallel_Specification ::= Sequential | Parallel_Chunked;
     Sequential       => ;
     Parallel_Chunked =>                         -- "parallel (chunk_specification) for ..."
           Chunk_Specification : Expression;  -- Void, a count, or a chunk discrete-range
 
     Block_Statement =>                          -- "[label:] declare ... begin ... end"
-          Block : Block;                        -- a block statement is a block (see Block)
+          Block : Block;  -- a block statement is a block (see Block)
 
     Exit_Statement =>
-          Loop_Name : Name,                     -- Void if unnamed
-          Condition : Expression;        -- Void if no "when"
+          Loop_Name : Name,        -- Void if unnamed
+          Condition : Expression;  -- Void if no "when"
 
     Raise_Statement =>                          -- [Ada 22 RM 11.3]
-          Exception_Name : Name,                -- Void for a re-raise ("raise;")
-          Message        : Expression;   -- Void if no "with" message
+          Exception_Name : Name,        -- Void for a re-raise ("raise;")
+          Message        : Expression;  -- Void if no "with" message
 
 
     -- =======================================================================
@@ -619,19 +622,19 @@ Structure DIANA_2022 Root Diana_Node Is
     -- =======================================================================
 
     Accept_Statement =>                         -- [Ada 22 RM 9.5.2]
-          Entry_Name         : Name,            -- the accepted entry
-          Entry_Index        : Expression, -- Void unless an entry-family member
+          Entry_Name         : Name,           -- the accepted entry
+          Entry_Index        : Expression,     -- Void unless an entry-family member
           Parameters         : Parameter_S,
-          Handled_Statements : Statement_S,     -- the "do ... end"; empty if absent
-          Handlers           : Alternative_S;   -- exception handlers in the accept body
+          Handled_Statements : Statement_S,    -- the "do ... end"; empty if absent
+          Handlers           : Alternative_S;  -- exception handlers in the accept body
 
     Entry_Call =>                               -- [Ada 22 RM 9.5.3]
-          Prefix             : Name,            -- the called entry (indexed for a family)
+          Prefix             : Name,           -- the called entry (indexed for a family)
           Actuals            : Association_S,
-          Normalized_Actuals : Expression_S;    -- semantic
+          Normalized_Actuals : Expression_S;   -- semantic
 
     Requeue_Statement =>                        -- [Ada 22 RM 9.5.4]
-          Target     : Name,                    -- the entry to requeue to
+          Target     : Name,     -- the entry to requeue to
           With_Abort : Boolean;
 
     Abort_Statement =>                          -- [Ada 22 RM 9.8]
@@ -646,14 +649,14 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Selective_Accept =>                         -- [Ada 22 RM 9.7.1]
           Alternatives    : Select_Alternative_S,
-          Else_Statements : Statement_S;        -- empty if no "else" part
+          Else_Statements : Statement_S;           -- empty if no "else" part
     Select_Alternative ::=
           Accept_Alternative
         | Delay_Alternative
         | Terminate_Alternative
         | Select_Alternative_Pragma;
     Accept_Alternative =>
-          Guard            : Expression, -- "when C =>"; Void if no guard
+          Guard            : Expression,        -- "when C =>"; Void if no guard
           Accept_Statement : Accept_Statement,
           Statements       : Statement_S;       -- statements after the accept
     Delay_Alternative =>
@@ -661,11 +664,11 @@ Structure DIANA_2022 Root Diana_Node Is
           Delay_Statement : Delay_Statement,
           Statements      : Statement_S;
     Terminate_Alternative =>
-          Guard : Expression;            -- "when C => terminate;"
+          Guard : Expression;  -- "when C => terminate;"
 
     Conditional_Entry_Call =>                   -- [Ada 22 RM 9.7.2]
           Entry_Call      : Entry_Call,
-          Call_Statements : Statement_S,        -- statements after the call
+          Call_Statements : Statement_S,  -- statements after the call
           Else_Statements : Statement_S;
     Timed_Entry_Call =>                         -- [Ada 22 RM 9.7.3]
           Entry_Call       : Entry_Call,
@@ -681,7 +684,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Parallel_Block =>                           -- "parallel do S1 and S2 and ... end do;"
           Arms : Parallel_Arm_S;
     Parallel_Arm =>
-          Statements : Statement_S;             -- one parallel sequence of statements
+          Statements : Statement_S;  -- one parallel sequence of statements
 
 
     -- =======================================================================
@@ -707,7 +710,9 @@ Structure DIANA_2022 Root Diana_Node Is
           Constraint : Constraint;
 
     Universal_Type    ::= Universal_Integer | Universal_Real | Universal_Fixed;
-    Universal_Integer => ;  Universal_Real => ;  Universal_Fixed => ;
+    Universal_Integer => ;
+    Universal_Real    => ;
+    Universal_Fixed   => ;
 
     -- ----- Scalar types -------------------------------------  [Ada 22 RM 3.5]
     Scalar_Type      ::= Discrete_Type | Real_Type;
@@ -739,14 +744,16 @@ Structure DIANA_2022 Root Diana_Node Is
           Pool_Specific            -- access T
         | General_Access_All       -- access all T
         | General_Access_Constant; -- access constant T
-    Pool_Specific => ;  General_Access_All => ;  General_Access_Constant => ;
-    Access_To_Object =>
+    Pool_Specific           => ;
+    General_Access_All      => ;
+    General_Access_Constant => ;
+    Access_To_Object        =>
           Designated   : Type_Spec,
           Access_Kind  : Object_Access_Kind,
-          Is_Anonymous : Boolean;               -- anonymous access type
+          Is_Anonymous : Boolean;             -- anonymous access type
     Access_To_Subprogram =>
           Profile      : Header,
-          Is_Protected : Boolean,               -- access to protected subprogram
+          Is_Protected : Boolean,  -- access to protected subprogram
           Is_Anonymous : Boolean;
 
     -- ----- Composite types -----------------------------  [Ada 22 RM 3.6, 3.8]
@@ -764,9 +771,9 @@ Structure DIANA_2022 Root Diana_Node Is
     Record_Type =>                              -- untagged record
           Components : Component_S;
     Tagged_Record_Type =>                       -- tagged record / record extension  [Ada 22 RM 3.9]
-          Ancestor    : Type_Spec,              -- Void for a root tagged type
-          Progenitors : Name_S,                 -- implemented interfaces
-          Components  : Component_S;            -- abstract/limited via Properties aspect
+          Ancestor    : Type_Spec,    -- Void for a root tagged type
+          Progenitors : Name_S,       -- implemented interfaces
+          Components  : Component_S;  -- abstract/limited via Properties aspect
     Interface_Type =>                           -- [Ada 22 RM 3.9.4]
           Progenitors : Name_S,
           Kind        : Interface_Kind;
@@ -776,9 +783,12 @@ Structure DIANA_2022 Root Diana_Node Is
         | Synchronized_Interface
         | Task_Interface
         | Protected_Interface;
-    Ordinary_Interface => ;  Limited_Interface => ;  Synchronized_Interface => ;
-    Task_Interface     => ;  Protected_Interface => ;
-    Task_Type =>                                -- [Ada 22 RM 9.1]   (operations: TODO(2022))
+    Ordinary_Interface     => ;
+    Limited_Interface      => ;
+    Synchronized_Interface => ;
+    Task_Interface         => ;
+    Protected_Interface    => ;
+    Task_Type              =>                                -- [Ada 22 RM 9.1]   (operations: TODO(2022))
           Definition : Task_Definition;
     Protected_Type =>                           -- [Ada 22 RM 9.4]   (operations: TODO(2022))
           Definition : Protected_Definition;
@@ -794,8 +804,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Parent : Constrained_Spec;
     Private_Type =>                             -- private / limited / tagged private; private extension
           Discriminants : Discriminant_Part,
-          Ancestor      : Type_Spec,            -- Void unless a private extension ("new P with private")
-          Progenitors   : Name_S,               -- interfaces of a private extension
+          Ancestor      : Type_Spec,          -- Void unless a private extension ("new P with private")
+          Progenitors   : Name_S,             -- interfaces of a private extension
           Is_Tagged     : Boolean,
           Is_Limited    : Boolean,
           Is_Abstract   : Boolean;
@@ -811,10 +821,10 @@ Structure DIANA_2022 Root Diana_Node Is
     Component_Declaration =>                     -- a record component_declaration  [Ada 22 RM 3.8]
           Names          : Defining_Name_S,
           Object_Subtype : Type_Spec,
-          Initialization : Expression;   -- Void if none
+          Initialization : Expression;       -- Void if none
     Component_Pragma => Pragma : Pragma;         -- a pragma among record components
-    Null_Component => ;
-    Variant_Part =>
+    Null_Component   => ;
+    Variant_Part     =>
           Discriminant : Name,
           Variants     : Variant_S;
     Variant =>
@@ -847,11 +857,11 @@ Structure DIANA_2022 Root Diana_Node Is
     Index_Constraint =>                          -- (discrete_range, ...)
           Ranges : Discrete_Range_S;
     Real_Constraint ::= Float_Constraint | Fixed_Constraint;
-    Float_Constraint => Digits_Value : Expression, Real_Range : Scalar_Range;  -- Void Real_Range allowed
-    Fixed_Constraint => Delta_Value  : Expression, Real_Range : Scalar_Range;
+    Float_Constraint        => Digits_Value : Expression, Real_Range : Scalar_Range;  -- Void Real_Range allowed
+    Fixed_Constraint        => Delta_Value  : Expression, Real_Range : Scalar_Range;
     Discriminant_Constraint =>
           Associations : Association_S,
-          Normalized   : Expression_S;          -- semantic
+          Normalized   : Expression_S;   -- semantic
 
 
     -- =======================================================================
@@ -863,19 +873,19 @@ Structure DIANA_2022 Root Diana_Node Is
           Parameters : Parameter_S;
     Function_Header =>
           Parameters     : Parameter_S,
-          Result_Subtype : Name;                -- Void for instantiation
+          Result_Subtype : Name;         -- Void for instantiation
     Entry_Header =>
-          Family_Index : Discrete_Range,        -- Void if not a family
+          Family_Index : Discrete_Range,  -- Void if not a family
           Parameters   : Parameter_S;
 
     Subprogram_Declaration =>
           Designator : Defining_Occurrence,
           Header     : Header,
-          Completion : Unit_Completion;         -- renaming/instantiation/default, or none
+          Completion : Unit_Completion;      -- renaming/instantiation/default, or none
     Subprogram_Body =>
           Designator : Defining_Occurrence,
           Header     : Header,
-          Completion : Unit_Completion;         -- a block or stub
+          Completion : Unit_Completion;      -- a block or stub
 
     Parameter ::=                               -- TODO(2022): aliased, anonymous access
           In_Parameter
@@ -894,13 +904,13 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Package_Declaration =>
           Name       : Defining_Name,
-          Completion : Unit_Completion;         -- a package_specification, instantiation, or renaming
+          Completion : Unit_Completion;  -- a package_specification, instantiation, or renaming
     Package_Specification =>
           Visible_Declarations : Declaration_S,
           Private_Declarations : Declaration_S;
     Package_Body =>
           Name       : Defining_Name,
-          Completion : Unit_Completion;         -- a block or stub
+          Completion : Unit_Completion;  -- a block or stub
 
     -- A program unit's completion. Rev 4 unifies the "spec definition" and the
     -- "body description"; which alternatives are legal in a given position (a bare
@@ -919,10 +929,10 @@ Structure DIANA_2022 Root Diana_Node Is
           Handlers     : Alternative_S;
     Unit_Instantiation => Instance : Generic_Instantiation;   -- the instance's home is Declaration
     Unit_Renaming      => Renamed  : Name;
-    Stub => ;
-    Subunit =>
+    Stub               => ;
+    Subunit            =>
           Parent     : Name,
-          Completion : Proper_Body;             -- a subunit's body is a proper body
+          Completion : Proper_Body;  -- a subunit's body is a proper body
     Renaming =>
           Renamed : Name;
     Language_Binding =>
@@ -936,7 +946,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Definition : Task_Definition;
     Task_Definition ::= Task_Specification | Void;
     Task_Specification =>
-          Declarations : Declaration_S;         -- entry declarations + representation items
+          Declarations : Declaration_S;  -- entry declarations + representation items
     Task_Body =>
           Name : Defining_Name,
           Completion : Unit_Completion;
@@ -945,13 +955,13 @@ Structure DIANA_2022 Root Diana_Node Is
     -- Protected_Type. The body holds protected subprograms and entry bodies.)
     Protected_Body =>
           Name       : Defining_Name,
-          Operations : Item_S;                  -- protected subprograms + entry bodies (legality is semantic)
+          Operations : Item_S;         -- protected subprograms + entry bodies (legality is semantic)
     Entry_Body =>                               -- [Ada 22 RM 9.5.2]
           Name         : Defining_Name,
-          Family_Index : Entry_Index_Specification, -- Void unless an entry family
+          Family_Index : Entry_Index_Specification,  -- Void unless an entry family
           Parameters   : Parameter_S,
-          Barrier      : Expression,            -- the "when <barrier>" condition
-          Completion   : Block;                 -- the entry body's block
+          Barrier      : Expression,                 -- the "when <barrier>" condition
+          Completion   : Block;                      -- the entry body's block
     Entry_Index_Specification ::= Entry_Index_Definition | Void;
     Entry_Index_Definition =>                   -- "(for I in discrete_range)"
           Parameter      : Defining_Name,
@@ -983,30 +993,31 @@ Structure DIANA_2022 Root Diana_Node Is
           Names        : Defining_Name_S,
           Mode         : Generic_Object_Mode,
           Subtype_Mark : Name,
-          Default      : Expression;     -- Void if none
+          Default      : Expression;           -- Void if none
     Generic_Object_Mode ::= Generic_In | Generic_In_Out;
-    Generic_In => ;  Generic_In_Out => ;
+    Generic_In     => ;
+    Generic_In_Out => ;
 
     Generic_Formal_Type_Declaration =>          -- [Ada 22 RM 12.5]
           Name       : Defining_Name,
-          Definition : Generic_Formal_Type;     -- a Type_Spec (see below)
+          Definition : Generic_Formal_Type;  -- a Type_Spec (see below)
 
     Generic_Formal_Subprogram =>                -- [Ada 22 RM 12.6]
-          Specification : Subprogram_Declaration,   -- referenced, not membered
+          Specification : Subprogram_Declaration,     -- referenced, not membered
           Default       : Formal_Subprogram_Default;
     Formal_Subprogram_Default ::=               -- "is Name" | "is <>" | (none)
           Default_Name
         | Box
         | No_Default;
     Default_Name => Subprogram : Name;          -- the default subprogram
-    Box        => ;
-    No_Default => ;
+    Box          => ;
+    No_Default   => ;
 
     Generic_Formal_Package =>                   -- [Ada 22 RM 12.7]
           Name     : Defining_Name,
-          Template : Name,                      -- the named generic package
-          Actuals  : Association_S,             -- explicit actuals (empty if box)
-          Is_Box   : Boolean;                   -- "(<>)" — matches any instance
+          Template : Name,           -- the named generic package
+          Actuals  : Association_S,  -- explicit actuals (empty if box)
+          Is_Box   : Boolean;        -- "(<>)" — matches any instance
 
     -- ----- Generic formal types (MIRROR of the Type_Spec hierarchy) ----------
     --   Scalar formals are "open" (<>) markers; structured formals carry the
@@ -1065,8 +1076,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Is_Tagged : Boolean;
 
     Generic_Instantiation =>
-          Generic_Unit          : Name,         -- structural
-          Associations          : Association_S, -- structural
+          Generic_Unit          : Name,                                                       -- structural
+          Associations          : Association_S,                                              -- structural
           Expanded_Declarations : Declaration_S;-- semantic (the instantiated spec)  [DIANA]
 
 
@@ -1077,10 +1088,10 @@ Structure DIANA_2022 Root Diana_Node Is
     -- =======================================================================
 
     Semantic_Property =>
-          Identity   : Property_Identity,       -- structural (which property; see below)
-          Class_Wide : Boolean,                 -- structural (the 'Class form: Pre'Class, ...)
-          Value      : Property_Value,          -- structural (Void = boolean aspect, defaults True)
-          Origin     : Property_Origin;         -- structural (aspect vs attribute clause)
+          Identity   : Property_Identity,  -- structural (which property; see below)
+          Class_Wide : Boolean,            -- structural (the 'Class form: Pre'Class, ...)
+          Value      : Property_Value,     -- structural (Void = boolean aspect, defaults True)
+          Origin     : Property_Origin;    -- structural (aspect vs attribute clause)
     Property_Origin ::= From_Aspect | From_Attribute_Clause;
     From_Aspect           => ;
     From_Attribute_Clause => ;
@@ -1088,11 +1099,11 @@ Structure DIANA_2022 Root Diana_Node Is
     -- A property value is usually an expression; Contract_Cases is structured;
     -- boolean aspects (Pack, Atomic, Inline, ...) carry Void and default to True.
     Property_Value ::= Aspect_Expression | Contract_Case_List | Void;
-    Aspect_Expression => Value : Expression;    -- the usual aspect/attribute value
+    Aspect_Expression  => Value : Expression;    -- the usual aspect/attribute value
     Contract_Case_List =>                       -- [Ada 22 RM 6.1.1]
           Cases : Contract_Case_S;
     Contract_Case =>
-          Guard       : Expression,      -- the condition; Void = "others"
+          Guard       : Expression,  -- the condition; Void = "others"
           Consequence : Expression;
 
     -- Recognized aspects / attribute-definition properties.  "Aspect_X" denotes
@@ -1112,95 +1123,172 @@ Structure DIANA_2022 Root Diana_Node Is
         | Other_Property;
 
     Other_Property =>
-          Property_Name : Name;                 -- the source aspect/attribute name
+          Property_Name : Name;  -- the source aspect/attribute name
 
     -- Assertions & contracts    [Ada 22 RM 13.1.1, 6.1.1, 6.1.2, 7.3.2, 7.3.3]
     Contract_Aspect ::=
-          Aspect_Pre | Aspect_Post | Aspect_Type_Invariant
-        | Aspect_Predicate | Aspect_Static_Predicate | Aspect_Dynamic_Predicate
-        | Aspect_Contract_Cases | Aspect_Default_Initial_Condition
+          Aspect_Pre
+        | Aspect_Post
+        | Aspect_Type_Invariant
+        | Aspect_Predicate 
+        | Aspect_Static_Predicate 
+        | Aspect_Dynamic_Predicate
+        | Aspect_Contract_Cases 
+        | Aspect_Default_Initial_Condition
         | Aspect_Subprogram_Variant            -- Ada 2022
         | Aspect_Global                        -- Ada 2022
         | Aspect_Depends
         | Aspect_Relaxed_Initialization        -- Ada 2022
         | Aspect_Stable_Properties;            -- Ada 2022
-    Aspect_Pre              => ;   Aspect_Post                    => ;
-    Aspect_Type_Invariant   => ;   Aspect_Predicate               => ;
-    Aspect_Static_Predicate => ;   Aspect_Dynamic_Predicate       => ;
-    Aspect_Contract_Cases   => ;   Aspect_Default_Initial_Condition => ;
-    Aspect_Subprogram_Variant => ; Aspect_Global                  => ;
-    Aspect_Depends          => ;   Aspect_Relaxed_Initialization   => ;
-    Aspect_Stable_Properties => ;
+    Aspect_Pre                       => ;
+    Aspect_Post                      => ;
+    Aspect_Type_Invariant            => ;
+    Aspect_Predicate                 => ;
+    Aspect_Static_Predicate          => ;
+    Aspect_Dynamic_Predicate         => ;
+    Aspect_Contract_Cases            => ;
+    Aspect_Default_Initial_Condition => ;
+    Aspect_Subprogram_Variant        => ;
+    Aspect_Global                    => ;
+    Aspect_Depends                   => ;
+    Aspect_Relaxed_Initialization    => ;
+    Aspect_Stable_Properties         => ;
 
     -- Representation                                   [Ada 22 RM 13.1 .. 13.3]
     Representation_Aspect ::=
-          Aspect_Size | Aspect_Object_Size | Aspect_Component_Size
-        | Aspect_Alignment | Aspect_Bit_Order | Aspect_Scalar_Storage_Order
-        | Aspect_Pack | Aspect_Address | Aspect_Storage_Size
-        | Aspect_Storage_Pool | Aspect_Default_Storage_Pool
-        | Aspect_Small | Aspect_Machine_Radix
-        | Aspect_Default_Value | Aspect_Default_Component_Value
-        | Aspect_Atomic | Aspect_Volatile
-        | Aspect_Atomic_Components | Aspect_Volatile_Components
-        | Aspect_Independent | Aspect_Independent_Components
-        | Aspect_External_Tag | Aspect_Discard_Names;
-    Aspect_Size            => ;   Aspect_Object_Size          => ;
-    Aspect_Component_Size  => ;   Aspect_Alignment            => ;
-    Aspect_Bit_Order       => ;   Aspect_Scalar_Storage_Order => ;
-    Aspect_Pack            => ;   Aspect_Address              => ;
-    Aspect_Storage_Size    => ;   Aspect_Storage_Pool         => ;
-    Aspect_Default_Storage_Pool => ; Aspect_Small             => ;
-    Aspect_Machine_Radix   => ;   Aspect_Default_Value        => ;
-    Aspect_Default_Component_Value => ; Aspect_Atomic          => ;
-    Aspect_Volatile        => ;   Aspect_Atomic_Components     => ;
-    Aspect_Volatile_Components => ; Aspect_Independent         => ;
-    Aspect_Independent_Components => ; Aspect_External_Tag      => ;
-    Aspect_Discard_Names   => ;
+          Aspect_Size 
+        | Aspect_Object_Size 
+        | Aspect_Component_Size
+        | Aspect_Alignment 
+        | Aspect_Bit_Order 
+        | Aspect_Scalar_Storage_Order
+        | Aspect_Pack 
+        | Aspect_Address 
+        | Aspect_Storage_Size
+        | Aspect_Storage_Pool 
+        | Aspect_Default_Storage_Pool
+        | Aspect_Small 
+        | Aspect_Machine_Radix
+        | Aspect_Default_Value 
+        | Aspect_Default_Component_Value
+        | Aspect_Atomic 
+        | Aspect_Volatile
+        | Aspect_Atomic_Components 
+        | Aspect_Volatile_Components
+        | Aspect_Independent 
+        | Aspect_Independent_Components
+        | Aspect_External_Tag 
+        | Aspect_Discard_Names;
+    Aspect_Size                    => ;
+    Aspect_Object_Size             => ;
+    Aspect_Component_Size          => ;
+    Aspect_Alignment               => ;
+    Aspect_Bit_Order               => ;
+    Aspect_Scalar_Storage_Order    => ;
+    Aspect_Pack                    => ;
+    Aspect_Address                 => ;
+    Aspect_Storage_Size            => ;
+    Aspect_Storage_Pool            => ;
+    Aspect_Default_Storage_Pool    => ;
+    Aspect_Small                   => ;
+    Aspect_Machine_Radix           => ;
+    Aspect_Default_Value           => ;
+    Aspect_Default_Component_Value => ;
+    Aspect_Atomic                  => ;
+    Aspect_Volatile                => ;
+    Aspect_Atomic_Components       => ;
+    Aspect_Volatile_Components     => ;
+    Aspect_Independent             => ;
+    Aspect_Independent_Components  => ;
+    Aspect_External_Tag            => ;
+    Aspect_Discard_Names           => ;
 
     -- Interfacing                                            [Ada 22 RM B.1]
     Interfacing_Aspect ::=
-          Aspect_Convention | Aspect_Import | Aspect_Export
-        | Aspect_External_Name | Aspect_Link_Name;
-    Aspect_Convention => ;   Aspect_Import      => ;   Aspect_Export => ;
-    Aspect_External_Name => ; Aspect_Link_Name  => ;
+          Aspect_Convention 
+        | Aspect_Import 
+        | Aspect_Export
+        | Aspect_External_Name 
+        | Aspect_Link_Name;
+    Aspect_Convention    => ;
+    Aspect_Import        => ;
+    Aspect_Export        => ;
+    Aspect_External_Name => ;
+    Aspect_Link_Name     => ;
 
     -- Categorization & subprogram                       [Ada 22 RM 10.2.1, 6.3]
     Categorization_Aspect ::=
-          Aspect_Pure | Aspect_Preelaborate | Aspect_Elaborate_Body
-        | Aspect_Remote_Types | Aspect_Remote_Call_Interface | Aspect_Shared_Passive
-        | Aspect_Inline | Aspect_No_Return;
-    Aspect_Pure => ;   Aspect_Preelaborate => ;   Aspect_Elaborate_Body => ;
-    Aspect_Remote_Types => ; Aspect_Remote_Call_Interface => ; Aspect_Shared_Passive => ;
-    Aspect_Inline => ; Aspect_No_Return => ;
+          Aspect_Pure
+        | Aspect_Preelaborate 
+        | Aspect_Elaborate_Body
+        | Aspect_Remote_Types 
+        | Aspect_Remote_Call_Interface 
+        | Aspect_Shared_Passive
+        | Aspect_Inline 
+        | Aspect_No_Return;
+    Aspect_Pure                  => ;
+    Aspect_Preelaborate          => ;
+    Aspect_Elaborate_Body        => ;
+    Aspect_Remote_Types          => ;
+    Aspect_Remote_Call_Interface => ;
+    Aspect_Shared_Passive        => ;
+    Aspect_Inline                => ;
+    Aspect_No_Return             => ;
 
     -- Concurrency & real-time                              [Ada 22 RM D, C.3]
     Concurrency_Aspect ::=
-          Aspect_Priority | Aspect_Interrupt_Priority | Aspect_CPU
-        | Aspect_Dispatching_Domain | Aspect_Attach_Handler
-        | Aspect_Interrupt_Handler | Aspect_Exclusive_Functions;
-    Aspect_Priority => ;   Aspect_Interrupt_Priority => ;   Aspect_CPU => ;
-    Aspect_Dispatching_Domain => ; Aspect_Attach_Handler => ;
-    Aspect_Interrupt_Handler => ; Aspect_Exclusive_Functions => ;
+          Aspect_Priority 
+        | Aspect_Interrupt_Priority 
+        | Aspect_CPU
+        | Aspect_Dispatching_Domain 
+        | Aspect_Attach_Handler
+        | Aspect_Interrupt_Handler 
+        | Aspect_Exclusive_Functions;
+    Aspect_Priority            => ;
+    Aspect_Interrupt_Priority  => ;
+    Aspect_CPU                 => ;
+    Aspect_Dispatching_Domain  => ;
+    Aspect_Attach_Handler      => ;
+    Aspect_Interrupt_Handler   => ;
+    Aspect_Exclusive_Functions => ;
 
     -- Iteration & indexing                       [Ada 22 RM 4.1.6, 5.5.1, 4.3.5]
     Iteration_Aspect ::=
-          Aspect_Constant_Indexing | Aspect_Variable_Indexing
-        | Aspect_Default_Iterator | Aspect_Iterator_Element
-        | Aspect_Iterator_View | Aspect_Aggregate | Aspect_Iterable;
-    Aspect_Constant_Indexing => ; Aspect_Variable_Indexing => ;
-    Aspect_Default_Iterator => ; Aspect_Iterator_Element => ;
-    Aspect_Iterator_View => ; Aspect_Aggregate => ; Aspect_Iterable => ;
+          Aspect_Constant_Indexing 
+        | Aspect_Variable_Indexing
+        | Aspect_Default_Iterator 
+        | Aspect_Iterator_Element
+        | Aspect_Iterator_View 
+        | Aspect_Aggregate 
+        | Aspect_Iterable;
+    Aspect_Constant_Indexing => ;
+    Aspect_Variable_Indexing => ;
+    Aspect_Default_Iterator  => ;
+    Aspect_Iterator_Element  => ;
+    Aspect_Iterator_View     => ;
+    Aspect_Aggregate         => ;
+    Aspect_Iterable          => ;
 
     -- User-defined literals                                 [Ada 22 RM 4.2.1]
     Literal_Aspect ::=
-          Aspect_Integer_Literal | Aspect_Real_Literal | Aspect_String_Literal;
-    Aspect_Integer_Literal => ; Aspect_Real_Literal => ; Aspect_String_Literal => ;
+          Aspect_Integer_Literal 
+        | Aspect_Real_Literal 
+        | Aspect_String_Literal;
+    Aspect_Integer_Literal => ;
+    Aspect_Real_Literal    => ;
+    Aspect_String_Literal  => ;
 
     -- Streams & image                                  [Ada 22 RM 13.13.2, 4.10]
     Stream_Aspect ::=
-          Aspect_Read | Aspect_Write | Aspect_Input | Aspect_Output
+          Aspect_Read
+        | Aspect_Write 
+        | Aspect_Input 
+        | Aspect_Output
         | Aspect_Put_Image;                    -- Put_Image: Ada 2022
-    Aspect_Read => ; Aspect_Write => ; Aspect_Input => ; Aspect_Output => ;
+    Aspect_Read      => ;
+    Aspect_Write     => ;
+    Aspect_Input     => ;
+    Aspect_Output    => ;
     Aspect_Put_Image => ;
 
     -- Representation clauses that are NOT aspect-equivalent (record layout, ...)
@@ -1213,8 +1301,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Alignment      : Expression,
           Component_Reps : Component_Rep_S;
     Component_Rep =>
-          Name     : Name,
-          Position : Expression,
+          Name      : Name,
+          Position  : Expression,
           Bit_Range : Range_Bounds;
     Address_Clause =>
           Name    : Name,
@@ -1246,22 +1334,48 @@ Structure DIANA_2022 Root Diana_Node Is
     -- =======================================================================
 
     Operator ::=
-          Op_And | Op_Or | Op_Xor
-        | Op_Equal | Op_Not_Equal
-        | Op_Less | Op_Less_Equal | Op_Greater | Op_Greater_Equal
-        | Op_Plus | Op_Minus | Op_Concatenate
-        | Op_Unary_Plus | Op_Unary_Minus
-        | Op_Absolute | Op_Not
-        | Op_Multiply | Op_Divide | Op_Modulo | Op_Remainder | Op_Exponentiate;
-    Op_And            => ;   Op_Or             => ;   Op_Xor          => ;
-    Op_Equal          => ;   Op_Not_Equal      => ;
-    Op_Less           => ;   Op_Less_Equal     => ;
-    Op_Greater        => ;   Op_Greater_Equal  => ;
-    Op_Plus           => ;   Op_Minus          => ;   Op_Concatenate  => ;
-    Op_Unary_Plus     => ;   Op_Unary_Minus    => ;
-    Op_Absolute       => ;   Op_Not            => ;
-    Op_Multiply       => ;   Op_Divide         => ;
-    Op_Modulo         => ;   Op_Remainder      => ;   Op_Exponentiate => ;
+          Op_And
+        | Op_Or 
+        | Op_Xor
+        | Op_Equal 
+        | Op_Not_Equal
+        | Op_Less 
+        | Op_Less_Equal 
+        | Op_Greater 
+        | Op_Greater_Equal
+        | Op_Plus 
+        | Op_Minus 
+        | Op_Concatenate
+        | Op_Unary_Plus 
+        | Op_Unary_Minus
+        | Op_Absolute 
+        | Op_Not
+        | Op_Multiply 
+        | Op_Divide 
+        | Op_Modulo 
+        | Op_Remainder 
+        | Op_Exponentiate;
+    Op_And           => ;
+    Op_Or            => ;
+    Op_Xor           => ;
+    Op_Equal         => ;
+    Op_Not_Equal     => ;
+    Op_Less          => ;
+    Op_Less_Equal    => ;
+    Op_Greater       => ;
+    Op_Greater_Equal => ;
+    Op_Plus          => ;
+    Op_Minus         => ;
+    Op_Concatenate   => ;
+    Op_Unary_Plus    => ;
+    Op_Unary_Minus   => ;
+    Op_Absolute      => ;
+    Op_Not           => ;
+    Op_Multiply      => ;
+    Op_Divide        => ;
+    Op_Modulo        => ;
+    Op_Remainder     => ;
+    Op_Exponentiate  => ;
 
 
     -- =======================================================================
@@ -1318,39 +1432,39 @@ Structure DIANA_2022 Root Diana_Node Is
         | Component_Rep_S
         | Semantic_Property_S;
 
-    Compilation_Unit_S   => List : Seq Of Compilation_Unit;
-    Context_Element_S    => List : Seq Of Context_Element;
-    Declaration_S        => List : Seq Of Declaration;
-    Item_S               => List : Seq Of Item;
-    Defining_Name_S      => List : Seq Of Defining_Name;
-    Name_S               => List : Seq Of Name;
-    Expression_S         => List : Seq Of Expression;
-    Association_S        => List : Seq Of Association;
-    Statement_S          => List : Seq Of Statement;
-    Alternative_S        => List : Seq Of Alternative;
-    Choice_S             => List : Seq Of Choice;
+    Compilation_Unit_S => List : Seq Of Compilation_Unit;
+    Context_Element_S  => List : Seq Of Context_Element;
+    Declaration_S      => List : Seq Of Declaration;
+    Item_S             => List : Seq Of Item;
+    Defining_Name_S    => List : Seq Of Defining_Name;
+    Name_S             => List : Seq Of Name;
+    Expression_S       => List : Seq Of Expression;
+    Association_S      => List : Seq Of Association;
+    Statement_S        => List : Seq Of Statement;
+    Alternative_S      => List : Seq Of Alternative;
+    Choice_S           => List : Seq Of Choice;
     Choice ::= Choice_Expression | Choice_Range | Others_Choice;
-    Choice_Expression => Value : Expression;     -- a single value choice
-    Choice_Range      => Range : Discrete_Range; -- a discrete-range choice
-    Others_Choice => ;
-    Conditional_Clause_S => List : Seq Of Conditional_Clause;
+    Choice_Expression        => Value : Expression;     -- a single value choice
+    Choice_Range             => Range : Discrete_Range; -- a discrete-range choice
+    Others_Choice            => ;
+    Conditional_Clause_S     => List : Seq Of Conditional_Clause;
     Expression_Clause_S      => List : Seq Of Expression_Clause;
     Expression_Alternative_S => List : Seq Of Expression_Alternative;
     Select_Alternative_S     => List : Seq Of Select_Alternative;
     Parallel_Arm_S           => List : Seq Of Parallel_Arm;
     Contract_Case_S          => List : Seq Of Contract_Case;
-    Component_S          => List : Seq Of Component;
-    Variant_S            => List : Seq Of Variant;
-    Discriminant_S       => List : Seq Of Discriminant;
-    Discriminant =>
+    Component_S              => List : Seq Of Component;
+    Variant_S                => List : Seq Of Variant;
+    Discriminant_S           => List : Seq Of Discriminant;
+    Discriminant             =>
           Names        : Defining_Name_S,
           Subtype_Mark : Name,
           Default      : Expression;
-    Discrete_Range_S     => List : Seq Of Discrete_Range;
-    Parameter_S          => List : Seq Of Parameter;
-    Generic_Formal_S     => List : Seq Of Generic_Formal;
-    Component_Rep_S      => List : Seq Of Component_Rep;
-    Semantic_Property_S  => List : Seq Of Semantic_Property;
+    Discrete_Range_S    => List : Seq Of Discrete_Range;
+    Parameter_S         => List : Seq Of Parameter;
+    Generic_Formal_S    => List : Seq Of Generic_Formal;
+    Component_Rep_S     => List : Seq Of Component_Rep;
+    Semantic_Property_S => List : Seq Of Semantic_Property;
 
 
     -- =======================================================================
