@@ -157,7 +157,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     if               Renames If_Statement;
     case             Renames Case_Statement;
     loop             Renames Loop_Statement;
-    block            Renames Block_Statement;
+    block            Renames Block;   -- the block content (decls+stmts+handlers); Block_Statement wraps it
     labeled          Renames Labeled_Statement;
     raise            Renames Raise_Statement;
     delay            Renames Delay_Statement;
@@ -248,18 +248,20 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     in_out               Renames In_Out_Parameter;
     out                  Renames Out_Parameter;
     PARAM_S              Renames Parameter_S;
-    SUBPROGRAM_DEF       Renames Subprogram_Definition;
+    SUBPROGRAM_DEF       Renames Unit_Completion;
     subprogram_body      Renames Subprogram_Body;
-    SUBP_BODY_DESC       Renames Subprogram_Body_Description;
-    BLOCK_STUB           Renames Block_Or_Stub;
+    SUBP_BODY_DESC       Renames Unit_Completion;
+    BLOCK_STUB           Renames Unit_Completion;
     stub                 Renames Stub;
     subunit              Renames Subunit;
     SUBUNIT_BODY         Renames Proper_Body;
-    PACKAGE_DEF          Renames Package_Definition;
+    PACKAGE_DEF          Renames Unit_Completion;
     package_spec         Renames Package_Specification;
     PACKAGE_SPEC         Renames Package_Specification;
     package_body         Renames Package_Body;
-    PACK_BODY_DESC       Renames Package_Body_Description;
+    PACK_BODY_DESC       Renames Unit_Completion;
+    -- (Subprogram_Definition / *_Body_Description / Block_Or_Stub merged into
+    --  Unit_Completion; per-position legality is a semantic rule.)
     LOCATION             Renames Location;
     LANGUAGE             Renames Language_Binding;
     task_spec            Renames Task_Specification;

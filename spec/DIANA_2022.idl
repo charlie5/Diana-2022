@@ -192,7 +192,7 @@ Structure DIANA_2022 Root Diana_Node Is
     -- literal is enumeration-literal-like.
     Defining_Operator =>                        -- def_op
           Specification    : Header,
-          Completion       : Subprogram_Body_Description,
+          Completion       : Unit_Completion,
           Location         : Location,
           Stub             : Defining_Occurrence,
           First_Definition : Defining_Occurrence;
@@ -265,25 +265,25 @@ Structure DIANA_2022 Root Diana_Node Is
     Unit_Name ::= Subprogram_Name | Package_Name | Generic_Name | Task_Body_Name;
     Subprogram_Name =>                           -- proc_id / function_id
           Specification    : Header,
-          Completion       : Subprogram_Body_Description,
+          Completion       : Unit_Completion,
           Location         : Location,
           Stub             : Defining_Occurrence,
           First_Definition : Defining_Occurrence;
     Package_Name =>                              -- package_id
           Specification    : Package_Specification,
-          Completion       : Package_Body_Description,
+          Completion       : Unit_Completion,
           Address          : Expression,
           Stub             : Defining_Occurrence,
           First_Definition : Defining_Occurrence;
     Generic_Name =>                              -- generic_id
           Formals          : Generic_Formal_S,
           Specification    : Generic_Header,
-          Completion       : Block_Or_Stub,      -- Void under separate compilation
+          Completion       : Unit_Completion,      -- Void under separate compilation
           Stub             : Defining_Occurrence,
           First_Definition : Defining_Occurrence;
     Task_Body_Name =>                            -- task_body_id
           Type_Specification : Type_Spec,
-          Completion         : Block_Or_Stub,    -- Void under separate compilation
+          Completion         : Unit_Completion,    -- Void under separate compilation
           Stub               : Defining_Occurrence,
           First_Definition   : Defining_Occurrence;
 
@@ -598,10 +598,8 @@ Structure DIANA_2022 Root Diana_Node Is
     Parallel_Chunked =>                         -- "parallel (chunk_specification) for ..."
           Chunk_Specification : Object_Definition;  -- Void, a count, or a chunk discrete-range
 
-    Block_Statement =>
-          Declarations : Item_S,
-          Statements   : Statement_S,
-          Handlers     : Alternative_S;
+    Block_Statement =>                          -- "[label:] declare ... begin ... end"
+          Block : Block;                        -- a block statement is a block (see Block)
 
     Exit_Statement =>
           Loop_Name : Name,                     -- Void if unnamed
@@ -857,25 +855,11 @@ Structure DIANA_2022 Root Diana_Node Is
     Subprogram_Declaration =>
           Designator : Defining_Occurrence,
           Header     : Header,
-          Definition : Subprogram_Definition;
-    Subprogram_Definition ::=
-          Formal_Subprogram_Default
-        | Generic_Instantiation
-        | Renaming
-        | Language_Binding
-        | Void;
+          Completion : Unit_Completion;         -- renaming/instantiation/default, or none
     Subprogram_Body =>
           Designator : Defining_Occurrence,
           Header     : Header,
-          Completion       : Block_Or_Stub;
-    Subprogram_Body_Description ::=
-          Block_Statement
-        | Stub
-        | Generic_Instantiation
-        | Formal_Subprogram_Default
-        | Renaming
-        | Language_Binding
-        | Void;
+          Completion : Unit_Completion;         -- a block or stub
 
     Parameter ::=                               -- TODO(2022): aliased, anonymous access
           In_Parameter
@@ -894,25 +878,31 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Package_Declaration =>
           Name       : Defining_Name,
-          Definition : Package_Definition;
-    Package_Definition ::=
-          Package_Specification
-        | Generic_Instantiation
-        | Renaming;
+          Completion : Unit_Completion;         -- a package_specification, instantiation, or renaming
     Package_Specification =>
           Visible_Declarations : Declaration_S,
           Private_Declarations : Declaration_S;
     Package_Body =>
-          Name : Defining_Name,
-          Completion : Block_Or_Stub;
-    Package_Body_Description ::=
-          Block_Statement
-        | Stub
-        | Renaming
-        | Generic_Instantiation
-        | Void;
+          Name       : Defining_Name,
+          Completion : Unit_Completion;         -- a block or stub
 
-    Block_Or_Stub ::= Block_Statement | Stub;
+    -- A program unit's completion. Rev 4 unifies the "spec definition" and the
+    -- "body description"; which alternatives are legal in a given position (a bare
+    -- spec vs. a body) is a semantic rule, not a structural one.
+    Unit_Completion ::=
+          Block                       -- a block body (declarations + statements + handlers)
+        | Stub                        -- "is separate"
+        | Unit_Instantiation          -- "is new G(...)"
+        | Unit_Renaming               -- "renames X" / renaming-as-body
+        | Formal_Subprogram_Default   -- generic formal subprogram default
+        | Language_Binding            -- imported / convention
+        | Void;                       -- a spec with no completion
+    Block =>
+          Declarations : Item_S,
+          Statements   : Statement_S,
+          Handlers     : Alternative_S;
+    Unit_Instantiation => Instance : Generic_Instantiation;   -- the instance's home is Declaration
+    Unit_Renaming      => Renamed  : Name;
     Stub => ;
     Subunit =>
           Parent     : Name,
@@ -934,7 +924,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Declarations : Declaration_S;         -- entry declarations + representation items
     Task_Body =>
           Name : Defining_Name,
-          Completion : Block_Or_Stub;
+          Completion : Unit_Completion;
 
     -- Protected units  [Ada 22 RM 9.4]  (protected TYPES are Type_Specs — see
     -- Protected_Type. The body holds protected subprograms and entry bodies.)
@@ -946,7 +936,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Family_Index : Entry_Index_Specification, -- Void unless an entry family
           Parameters   : Parameter_S,
           Barrier      : Expression,            -- the "when <barrier>" condition
-          Completion         : Block_Statement;       -- declarations + statements + handlers
+          Completion   : Block;                 -- the entry body's block
     Entry_Index_Specification ::= Entry_Index_Definition | Void;
     Entry_Index_Definition =>                   -- "(for I in discrete_range)"
           Parameter      : Defining_Name,
