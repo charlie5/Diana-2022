@@ -53,7 +53,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     deferred_constant   Renames Deferred_Constant_Declaration;
     rename              Renames Renaming;
     use                 Renames Use_Clause;
-    OBJECT_DEF          Renames Object_Definition;
+    OBJECT_DEF          Renames Expression;   -- object inits are Expressions (Void if none); renamings are Renaming_Declarations
     constant            Renames Constant_Declaration;
     var                 Renames Variable_Declaration;
     -- (Object_Declaration is now a class: Constant_Declaration | Variable_Declaration.)
@@ -214,6 +214,8 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     null_comp           Renames Null_Component;
     VARIANT_S           Renames Variant_S;
     CHOICE              Renames Choice;
+    choice_exp          Renames Choice_Expression;
+    choice_range        Renames Choice_Range;
     CHOICE_S            Renames Choice_S;
     others              Renames Others_Choice;
     DSCRMT_VAR          Renames Discriminant;
@@ -270,7 +272,7 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     PACK_BODY_DESC       Renames Unit_Completion;
     -- (Subprogram_Definition / *_Body_Description / Block_Or_Stub merged into
     --  Unit_Completion; per-position legality is a semantic rule.)
-    LOCATION             Renames Location;
+    LOCATION             Renames Expression;
     LANGUAGE             Renames Language_Binding;
     task_spec            Renames Task_Specification;
     TASK_DEF             Renames Task_Definition;

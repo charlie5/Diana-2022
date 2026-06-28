@@ -137,17 +137,15 @@ Structure DIANA_2022 Root Diana_Node Is
     Constant_Declaration =>                     -- [Ada 22 RM 3.3.1]
           Names          : Defining_Name_S,     -- structural (the defined Constant_Names)
           Object_Subtype : Type_Spec,           -- structural
-          Initialization : Object_Definition;   -- structural (Void if none)
+          Initialization : Expression;   -- structural (Void if none)
     Variable_Declaration =>
           Names          : Defining_Name_S,     -- structural (the defined Object_Names)
           Object_Subtype : Type_Spec,           -- structural
-          Initialization : Object_Definition;   -- structural (Void if none)
+          Initialization : Expression;   -- structural (Void if none)
 
-    -- collapses an init expression and a renaming into one optional slot
-    Object_Definition ::=
-          Expression
-        | Renaming
-        | Void;
+    -- Optional initializers/conditions are now typed Expression directly; the
+    -- universal node Void stands in when absent. Object renamings are distinct
+    -- Renaming_Declarations, not an init-slot variant.
 
     Number_Declaration =>
           Names                   : Defining_Name_S,     -- structural
@@ -193,7 +191,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Defining_Operator =>                        -- def_op
           Specification    : Header,
           Completion       : Unit_Completion,
-          Location         : Location,
+          Location         : Expression,
           Stub             : Defining_Occurrence,
           First_Definition : Defining_Occurrence;
     Defining_Character =>                        -- def_char
@@ -221,27 +219,27 @@ Structure DIANA_2022 Root Diana_Node Is
     Variable_Name =>                             -- var_id
           Object_Type : Type_Spec,
           Address     : Expression,
-          Object_Def  : Object_Definition;
+          Object_Def  : Expression;
     Constant_Name =>                             -- const_id
           Object_Type      : Type_Spec,
           Address          : Expression,
-          Object_Def       : Object_Definition,
+          Object_Def       : Expression,
           First_Definition : Defining_Occurrence; -- deferred constants
     Number_Name =>                               -- number_id (a universal type)
           Object_Type             : Type_Spec,
           Static_Value_Expression : Expression;
     Component_Name =>                            -- comp_id
           Object_Type    : Type_Spec,
-          Initialization : Object_Definition,    -- Void if none
+          Initialization : Expression,    -- Void if none
           Component_Spec : Component_Rep;         -- Void if none
     Discriminant_Name =>                         -- dscrmt_id
           Object_Type      : Type_Spec,
-          Initialization   : Object_Definition,  -- Void if none
+          Initialization   : Expression,  -- Void if none
           First_Definition : Defining_Occurrence,
           Component_Spec   : Component_Rep;       -- Void if none
     Parameter_Name =>                            -- in_id / in_out_id / out_id
           Object_Type      : Type_Spec,
-          Default          : Object_Definition,  -- Void unless an 'in' default
+          Default          : Expression,  -- Void unless an 'in' default
           First_Definition : Defining_Occurrence;
     Iteration_Name =>                            -- iteration_id (a loop parameter)
           Object_Type : Type_Spec;
@@ -266,7 +264,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Subprogram_Name =>                           -- proc_id / function_id
           Specification    : Header,
           Completion       : Unit_Completion,
-          Location         : Location,
+          Location         : Expression,
           Stub             : Defining_Occurrence,
           First_Definition : Defining_Occurrence;
     Package_Name =>                              -- package_id
@@ -372,6 +370,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Operator : Short_Circuit_Op,
           Right    : Expression;
     Short_Circuit_Op ::= And_Then | Or_Else;
+    And_Then => ;  Or_Else => ;
 
     Membership ::= Range_Membership | Type_Membership;   -- TODO(2022): membership choice lists
     Range_Membership =>                         -- "X in L .. U"
@@ -383,6 +382,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Operator     : Membership_Op,
           Subtype_Mark : Name;
     Membership_Op ::= In_Set | Not_In_Set;
+    In_Set => ;  Not_In_Set => ;
 
     -- ----- Ada 2012 / 2022 expression forms ----------------------------------
 
@@ -391,7 +391,7 @@ Structure DIANA_2022 Root Diana_Node Is
     If_Expression =>
           Clauses : Expression_Clause_S;
     Expression_Clause =>
-          Condition : Object_Definition,        -- Void condition = the "else" result
+          Condition : Expression,        -- Void condition = the "else" result
           Result    : Expression;
     Case_Expression =>
           Selector     : Expression,
@@ -406,6 +406,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Iterator   : Iterator_Specification,
           Predicate  : Expression;
     Quantifier_Kind ::= For_All | For_Some;
+    For_All => ;  For_Some => ;
 
     -- Iterator specifications — shared by quantified expressions and the
     -- iterated associations in aggregates (loops may adopt this later).
@@ -415,12 +416,12 @@ Structure DIANA_2022 Root Diana_Node Is
           Parameter      : Defining_Name,
           Discrete_Range : Discrete_Range,
           Reverse_Order  : Boolean,
-          Filter         : Object_Definition;   -- Void if no "when" filter
+          Filter         : Expression;   -- Void if no "when" filter
     Container_Iterator =>                        -- "X of [reverse] iterable"
           Parameter     : Defining_Name,
           Iterable      : Expression,
           Reverse_Order : Boolean,
-          Filter        : Object_Definition;    -- Void if no "when" filter
+          Filter        : Expression;    -- Void if no "when" filter
 
     -- Declare expressions                                   [Ada 22 RM 4.5.9]
     Declare_Expression =>
@@ -437,7 +438,7 @@ Structure DIANA_2022 Root Diana_Node Is
     -- Raise expressions                                      [Ada 22 RM 4.4]
     Raise_Expression =>
           Exception_Name : Name,
-          Message        : Object_Definition;   -- Void if no "with" message
+          Message        : Expression;   -- Void if no "with" message
 
     -- Delta aggregates                                      [Ada 22 RM 4.3.4]
     Delta_Aggregate =>
@@ -503,9 +504,10 @@ Structure DIANA_2022 Root Diana_Node Is
     Target_Name => ;                            -- "@" : the assignment target  [Ada 22 RM 5.2.1]
 
     Association ::=                             -- parameter / aggregate associations
-          Expression
+          Positional_Association
         | Named_Association
         | Iterated_Association;
+    Positional_Association => Value : Expression;   -- a bare (positional) actual/value
     Named_Association =>
           Choices : Choice_S,
           Actual  : Expression;
@@ -565,13 +567,13 @@ Structure DIANA_2022 Root Diana_Node Is
     -- 5.8 return: ONE node collapses simple "return X;", "return;", and the
     -- extended return "return R : T := X do ... end return;".        [Instr]
     Return_Statement =>
-          Returned_Object    : Object_Definition,   -- Void for "return;"
+          Returned_Object    : Expression,   -- Void for "return;"
           Handled_Statements : Statement_S;         -- the "do ... end return"; empty if absent
 
     If_Statement =>
           Clauses : Conditional_Clause_S;
     Conditional_Clause =>
-          Condition  : Object_Definition,       -- Void condition = the "else" arm
+          Condition  : Expression,       -- Void condition = the "else" arm
           Statements : Statement_S;
 
     Case_Statement =>
@@ -589,6 +591,7 @@ Structure DIANA_2022 Root Diana_Node Is
           No_Iteration
         | While_Loop
         | For_Loop;
+    No_Iteration => ;                           -- a bare "loop ... end loop"
     While_Loop =>
           Condition : Expression;
     For_Loop =>                                 -- "for" / "for of" loops, optionally parallel
@@ -597,18 +600,18 @@ Structure DIANA_2022 Root Diana_Node Is
     Parallel_Specification ::= Sequential | Parallel_Chunked;
     Sequential       => ;
     Parallel_Chunked =>                         -- "parallel (chunk_specification) for ..."
-          Chunk_Specification : Object_Definition;  -- Void, a count, or a chunk discrete-range
+          Chunk_Specification : Expression;  -- Void, a count, or a chunk discrete-range
 
     Block_Statement =>                          -- "[label:] declare ... begin ... end"
           Block : Block;                        -- a block statement is a block (see Block)
 
     Exit_Statement =>
           Loop_Name : Name,                     -- Void if unnamed
-          Condition : Object_Definition;        -- Void if no "when"
+          Condition : Expression;        -- Void if no "when"
 
     Raise_Statement =>                          -- [Ada 22 RM 11.3]
           Exception_Name : Name,                -- Void for a re-raise ("raise;")
-          Message        : Object_Definition;   -- Void if no "with" message
+          Message        : Expression;   -- Void if no "with" message
 
 
     -- =======================================================================
@@ -619,7 +622,7 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Accept_Statement =>                         -- [Ada 22 RM 9.5.2]
           Entry_Name         : Name,            -- the accepted entry
-          Entry_Index        : Object_Definition, -- Void unless an entry-family member
+          Entry_Index        : Expression, -- Void unless an entry-family member
           Parameters         : Parameter_S,
           Handled_Statements : Statement_S,     -- the "do ... end"; empty if absent
           Handlers           : Alternative_S;   -- exception handlers in the accept body
@@ -652,15 +655,15 @@ Structure DIANA_2022 Root Diana_Node Is
         | Terminate_Alternative
         | Pragma;
     Accept_Alternative =>
-          Guard            : Object_Definition, -- "when C =>"; Void if no guard
+          Guard            : Expression, -- "when C =>"; Void if no guard
           Accept_Statement : Accept_Statement,
           Statements       : Statement_S;       -- statements after the accept
     Delay_Alternative =>
-          Guard           : Object_Definition,
+          Guard           : Expression,
           Delay_Statement : Delay_Statement,
           Statements      : Statement_S;
     Terminate_Alternative =>
-          Guard : Object_Definition;            -- "when C => terminate;"
+          Guard : Expression;            -- "when C => terminate;"
 
     Conditional_Entry_Call =>                   -- [Ada 22 RM 9.7.2]
           Entry_Call      : Entry_Call,
@@ -810,7 +813,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Component_Declaration =>                     -- a record component_declaration  [Ada 22 RM 3.8]
           Names          : Defining_Name_S,
           Object_Subtype : Type_Spec,
-          Initialization : Object_Definition;   -- Void if none
+          Initialization : Expression;   -- Void if none
     Component_Pragma =>                          -- a pragma among record components
           Name      : Name,
           Arguments : Association_S;
@@ -885,7 +888,7 @@ Structure DIANA_2022 Root Diana_Node Is
     In_Parameter =>
           Names        : Defining_Name_S,
           Subtype_Mark : Name,
-          Default      : Object_Definition;
+          Default      : Expression;
     Out_Parameter =>
           Names        : Defining_Name_S,
           Subtype_Mark : Name;
@@ -926,7 +929,6 @@ Structure DIANA_2022 Root Diana_Node Is
           Completion : Proper_Body;             -- a subunit's body is a proper body
     Renaming =>
           Renamed : Name;
-    Location ::= Expression | Void;
     Language_Binding =>
           Convention : Argument_Name;
 
@@ -984,8 +986,9 @@ Structure DIANA_2022 Root Diana_Node Is
           Names        : Defining_Name_S,
           Mode         : Generic_Object_Mode,
           Subtype_Mark : Name,
-          Default      : Object_Definition;     -- Void if none
+          Default      : Expression;     -- Void if none
     Generic_Object_Mode ::= Generic_In | Generic_In_Out;
+    Generic_In => ;  Generic_In_Out => ;
 
     Generic_Formal_Type_Declaration =>          -- [Ada 22 RM 12.5]
           Name       : Defining_Name,
@@ -994,10 +997,11 @@ Structure DIANA_2022 Root Diana_Node Is
     Generic_Formal_Subprogram =>                -- [Ada 22 RM 12.6]
           Specification : Subprogram_Declaration,   -- referenced, not membered
           Default       : Formal_Subprogram_Default;
-    Formal_Subprogram_Default ::=               -- "is <>" | "is Name" | (none)
-          Name
+    Formal_Subprogram_Default ::=               -- "is Name" | "is <>" | (none)
+          Default_Name
         | Box
         | No_Default;
+    Default_Name => Subprogram : Name;          -- the default subprogram
     Box        => ;
     No_Default => ;
 
@@ -1086,11 +1090,12 @@ Structure DIANA_2022 Root Diana_Node Is
 
     -- A property value is usually an expression; Contract_Cases is structured;
     -- boolean aspects (Pack, Atomic, Inline, ...) carry Void and default to True.
-    Property_Value ::= Expression | Contract_Case_List | Void;
+    Property_Value ::= Aspect_Expression | Contract_Case_List | Void;
+    Aspect_Expression => Value : Expression;    -- the usual aspect/attribute value
     Contract_Case_List =>                       -- [Ada 22 RM 6.1.1]
           Cases : Contract_Case_S;
     Contract_Case =>
-          Guard       : Object_Definition,      -- the condition; Void = "others"
+          Guard       : Expression,      -- the condition; Void = "others"
           Consequence : Expression;
 
     -- Recognized aspects / attribute-definition properties.  "Aspect_X" denotes
@@ -1208,7 +1213,7 @@ Structure DIANA_2022 Root Diana_Node Is
         | Code_Statement;
     Record_Representation =>
           Name           : Name,
-          Alignment      : Object_Definition,
+          Alignment      : Expression,
           Component_Reps : Component_Rep_S;
     Component_Rep =>
           Name     : Name,
@@ -1321,7 +1326,9 @@ Structure DIANA_2022 Root Diana_Node Is
     Statement_S          => List : Seq Of Statement;
     Alternative_S        => List : Seq Of Alternative;
     Choice_S             => List : Seq Of Choice;
-    Choice ::= Expression | Discrete_Range | Others_Choice;
+    Choice ::= Choice_Expression | Choice_Range | Others_Choice;
+    Choice_Expression => Value : Expression;     -- a single value choice
+    Choice_Range      => Range : Discrete_Range; -- a discrete-range choice
     Others_Choice => ;
     Conditional_Clause_S => List : Seq Of Conditional_Clause;
     Expression_Clause_S      => List : Seq Of Expression_Clause;
@@ -1335,7 +1342,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Discriminant =>
           Names        : Defining_Name_S,
           Subtype_Mark : Name,
-          Default      : Object_Definition;
+          Default      : Expression;
     Discrete_Range_S     => List : Seq Of Discrete_Range;
     Parameter_S          => List : Seq Of Parameter;
     Generic_Formal_S     => List : Seq Of Generic_Formal;
