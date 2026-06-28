@@ -94,8 +94,10 @@ Structure DIANA_2022 Root Diana_Node Is
         | Context_Use_Clause
         | Context_Pragma;
 
-    With_Clause =>             -- [Ada 22 RM 10.1.2]  (limited/private with: TODO(2022))
-          Names : Name_S;
+    With_Clause =>             -- [Ada 22 RM 10.1.2]
+          Names      : Name_S,
+          Is_Limited : Boolean,             -- "limited with"
+          Is_Private : Boolean;             -- "private with"
 
 
     -- =======================================================================
@@ -371,15 +373,14 @@ Structure DIANA_2022 Root Diana_Node Is
     And_Then => ;
     Or_Else  => ;
 
-    Membership ::= Range_Membership | Type_Membership;   -- TODO(2022): membership choice lists
-    Range_Membership =>                         -- "X in L .. U"
+    Membership =>                               -- "X in C1 | C2 | ..."  [Ada 22 RM 4.4]
           Operand  : Expression,
           Operator : Membership_Op,
-          Tested   : Scalar_Range;
-    Type_Membership =>                          -- "X in T"
-          Operand      : Expression,
-          Operator     : Membership_Op,
-          Subtype_Mark : Name;
+          Choices  : Membership_Choice_S;
+    Membership_Choice  ::= Membership_Value | Membership_Range | Membership_Subtype;
+    Membership_Value   => Value        : Expression;    -- a simple_expression choice
+    Membership_Range   => Range        : Scalar_Range;  -- a range choice
+    Membership_Subtype => Subtype_Mark : Name;          -- a subtype_mark choice
     Membership_Op ::= In_Set | Not_In_Set;
     In_Set     => ;
     Not_In_Set => ;
@@ -765,9 +766,10 @@ Structure DIANA_2022 Root Diana_Node Is
         | Task_Type
         | Protected_Type;
 
-    Array_Type =>                               -- TODO(2022): constrained vs unconstrained marker
-          Index_Ranges : Discrete_Range_S,
-          Component    : Constrained_Spec;
+    Array_Type =>                               -- [Ada 22 RM 3.6]
+          Index_Ranges   : Discrete_Range_S,    -- index subtypes ("T range <>") or index constraints
+          Is_Constrained : Boolean,             -- constrained_array_definition vs unconstrained
+          Component      : Constrained_Spec;
     Record_Type =>                              -- untagged record
           Components : Component_S;
     Tagged_Record_Type =>                       -- tagged record / record extension  [Ada 22 RM 3.9]
@@ -887,20 +889,27 @@ Structure DIANA_2022 Root Diana_Node Is
           Header     : Header,
           Completion : Unit_Completion;      -- a block or stub
 
-    Parameter ::=                               -- TODO(2022): aliased, anonymous access
+    Parameter ::=                               -- [Ada 22 RM 6.1]
           In_Parameter
         | Out_Parameter
         | In_Out_Parameter;
     In_Parameter =>
-          Names        : Defining_Name_S,
-          Subtype_Mark : Name,
-          Default      : Expression;
+          Names      : Defining_Name_S,
+          Type_Mark  : Parameter_Type,
+          Default    : Expression,            -- Void if none
+          Is_Aliased : Boolean;
     Out_Parameter =>
-          Names        : Defining_Name_S,
-          Subtype_Mark : Name;
+          Names      : Defining_Name_S,
+          Type_Mark  : Parameter_Type,
+          Is_Aliased : Boolean;
     In_Out_Parameter =>
-          Names        : Defining_Name_S,
-          Subtype_Mark : Name;
+          Names      : Defining_Name_S,
+          Type_Mark  : Parameter_Type,
+          Is_Aliased : Boolean;
+    -- A parameter's type is a subtype mark or an anonymous access definition.
+    Parameter_Type ::= Named_Subtype | Anonymous_Access;
+    Named_Subtype    => Mark       : Name;
+    Anonymous_Access => Definition : Access_Type;   -- "access [all|constant] T" / "access P"
 
     Package_Declaration =>
           Name       : Defining_Name,
@@ -1418,6 +1427,7 @@ Structure DIANA_2022 Root Diana_Node Is
         | Statement_S
         | Alternative_S
         | Choice_S
+        | Membership_Choice_S
         | Conditional_Clause_S
         | Expression_Clause_S
         | Expression_Alternative_S
@@ -1432,21 +1442,28 @@ Structure DIANA_2022 Root Diana_Node Is
         | Component_Rep_S
         | Semantic_Property_S;
 
-    Compilation_Unit_S => List : Seq Of Compilation_Unit;
-    Context_Element_S  => List : Seq Of Context_Element;
-    Declaration_S      => List : Seq Of Declaration;
-    Item_S             => List : Seq Of Item;
-    Defining_Name_S    => List : Seq Of Defining_Name;
-    Name_S             => List : Seq Of Name;
-    Expression_S       => List : Seq Of Expression;
-    Association_S      => List : Seq Of Association;
-    Statement_S        => List : Seq Of Statement;
-    Alternative_S      => List : Seq Of Alternative;
-    Choice_S           => List : Seq Of Choice;
-    Choice ::= Choice_Expression | Choice_Range | Others_Choice;
+    Compilation_Unit_S  => List : Seq Of Compilation_Unit;
+    Context_Element_S   => List : Seq Of Context_Element;
+    Declaration_S       => List : Seq Of Declaration;
+    Item_S              => List : Seq Of Item;
+    Defining_Name_S     => List : Seq Of Defining_Name;
+    Name_S              => List : Seq Of Name;
+    Expression_S        => List : Seq Of Expression;
+    Association_S       => List : Seq Of Association;
+    Statement_S         => List : Seq Of Statement;
+    Alternative_S       => List : Seq Of Alternative;
+    Choice_S            => List : Seq Of Choice;
+    Membership_Choice_S => List : Seq Of Membership_Choice;
+    
+    Choice ::=
+          Choice_Expression
+        | Choice_Range
+        | Others_Choice;
+        
     Choice_Expression        => Value : Expression;     -- a single value choice
     Choice_Range             => Range : Discrete_Range; -- a discrete-range choice
     Others_Choice            => ;
+    
     Conditional_Clause_S     => List : Seq Of Conditional_Clause;
     Expression_Clause_S      => List : Seq Of Expression_Clause;
     Expression_Alternative_S => List : Seq Of Expression_Alternative;

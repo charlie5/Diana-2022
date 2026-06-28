@@ -132,8 +132,10 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     parenthesized       Renames Parenthesized_Expression;
     binary              Renames Short_Circuit;
     membership          Renames Membership;
-    range_membership    Renames Range_Membership;
-    type_membership     Renames Type_Membership;
+    range_membership    Renames Membership_Range;     -- now a membership-choice kind
+    type_membership     Renames Membership_Subtype;   -- now a membership-choice kind
+    -- RESTRUCTURED: Rev 3's distinct range/type membership nodes become one
+    --   Membership node carrying a Membership_Choice list (Ada 2012 "in A | B").
     SHORT_CIRCUIT_OP    Renames Short_Circuit_Op;
     and_then            Renames And_Then;
     or_else             Renames Or_Else;
