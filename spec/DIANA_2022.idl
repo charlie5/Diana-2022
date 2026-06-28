@@ -91,8 +91,8 @@ Structure DIANA_2022 Root Diana_Node Is
 
     Context_Element ::=
           With_Clause
-        | Use_Clause
-        | Pragma;
+        | Context_Use_Clause
+        | Context_Pragma;
 
     With_Clause =>             -- [Ada 22 RM 10.1.2]  (limited/private with: TODO(2022))
           Names : Name_S;
@@ -123,9 +123,7 @@ Structure DIANA_2022 Root Diana_Node Is
         | Renaming_Declaration
         | Generic_Instantiation;             -- "package X is new G(...)"  (single home)
     Use_Or_Pragma ::= Use_Clause | Declaration_Pragma;
-    Declaration_Pragma =>                       -- a pragma in a declarative position
-          Name      : Name,
-          Arguments : Association_S;
+    Declaration_Pragma => Pragma : Pragma;      -- a pragma in a declarative position
 
     -- Declarations / types that may carry aspects or attribute-definition
     -- clauses (semantic). Attached to these base classes for now; refine to
@@ -540,7 +538,7 @@ Structure DIANA_2022 Root Diana_Node Is
         | Select_Statement          -- [Ada 22 RM 9.7]
         | Abort_Statement           -- [Ada 22 RM 9.8]
         | Parallel_Block            -- [Ada 22 RM 5.6.1]
-        | Pragma;
+        | Statement_Pragma;
 
     Null_Statement => ;
 
@@ -579,7 +577,7 @@ Structure DIANA_2022 Root Diana_Node Is
     Case_Statement =>
           Selector     : Expression,
           Alternatives : Alternative_S;
-    Alternative ::= Case_Alternative | Pragma;
+    Alternative ::= Case_Alternative | Alternative_Pragma;
     Case_Alternative =>
           Choices    : Choice_S,
           Statements : Statement_S;
@@ -653,7 +651,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Accept_Alternative
         | Delay_Alternative
         | Terminate_Alternative
-        | Pragma;
+        | Select_Alternative_Pragma;
     Accept_Alternative =>
           Guard            : Expression, -- "when C =>"; Void if no guard
           Accept_Statement : Accept_Statement,
@@ -814,9 +812,7 @@ Structure DIANA_2022 Root Diana_Node Is
           Names          : Defining_Name_S,
           Object_Subtype : Type_Spec,
           Initialization : Expression;   -- Void if none
-    Component_Pragma =>                          -- a pragma among record components
-          Name      : Name,
-          Arguments : Association_S;
+    Component_Pragma => Pragma : Pragma;         -- a pragma among record components
     Null_Component => ;
     Variant_Part =>
           Discriminant : Name,
@@ -971,7 +967,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Name          : Defining_Name,
           Formals       : Generic_Formal_S,
           Specification : Generic_Header;
-    Generic_Header ::= Procedure_Header | Function_Header | Package_Specification;
+    Generic_Header ::= Generic_Subprogram_Header | Package_Specification;
+    Generic_Subprogram_Header => Profile : Header;  -- a generic procedure/function profile
 
     -- Generic formal part. Each formal is a wrapper node that *references* the
     -- shared declaration/type nodes via attributes (so Generic_Formal_Type stays
@@ -1231,9 +1228,16 @@ Structure DIANA_2022 Root Diana_Node Is
     -- Pragmas                                               [Ada 22 RM 2.8]
     -- =======================================================================
 
-    Pragma =>
+    Pragma =>                                   -- the pragma content
           Name      : Name,
           Arguments : Association_S;
+    -- Per-position pragma wrappers: a pragma must be a member of each list's
+    -- class, so each position gets a thin wrapper over the shared Pragma content.
+    Statement_Pragma          => Pragma : Pragma;
+    Context_Pragma            => Pragma : Pragma;
+    Alternative_Pragma        => Pragma : Pragma;
+    Select_Alternative_Pragma => Pragma : Pragma;
+    Context_Use_Clause        => Names  : Name_S;   -- a use clause in a context clause
 
 
     -- =======================================================================
@@ -1308,7 +1312,6 @@ Structure DIANA_2022 Root Diana_Node Is
         | Contract_Case_S
         | Component_S
         | Variant_S
-        | Discriminant_S
         | Discrete_Range_S
         | Parameter_S
         | Generic_Formal_S

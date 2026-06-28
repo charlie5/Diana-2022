@@ -310,7 +310,15 @@ Structure DIANA_2022_Compatibility Renames DIANA_2022 Is
     comp_rep         Renames Component_Rep;
     COMP_REP         Renames Component_Rep;
     PRAGMA           Renames Pragma;
-    pragma           Renames Pragma;
+    pragma           Renames Pragma;             -- the pragma content node
+    stm_pragma       Renames Statement_Pragma;
+    context_pragma   Renames Context_Pragma;
+    alternative_pragma Renames Alternative_Pragma;
+    select_alt_pragma  Renames Select_Alternative_Pragma;
+    -- Per-position pragma wrappers (Rev 4 DN_*_PRAGMA): each holds the shared
+    -- Pragma content. Declaration_Pragma / Component_Pragma cover those positions.
+    -- Rev 3 `use` in a context clause is a Context_Use_Clause; the declarative
+    -- use clause remains Use_Clause.
     ARGUMENT         Renames Argument_Name;
     -- RESTRUCTURED (the aspect/attribute unification):
     --   Rev 3 `simple_rep` (length clause + enumeration representation clause)
