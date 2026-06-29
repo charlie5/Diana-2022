@@ -1001,6 +1001,10 @@ package body Diana.Interpreter is
                  (Spelling_Of (As_Subprogram_Declaration
                     (As_Generic_Formal_Subprogram (F).Specification).Designator),
                   Definition_Of (A));
+            elsif Is_Generic_Formal_Type_Declaration (F) then
+               null;  --  a formal type is erased at runtime (values are
+                      --  dynamically typed); the actual type name binds nothing,
+                      --  it only consumes its positional actual slot.
             else
                Leave (Env, Call);
                raise Interpretation_Error with

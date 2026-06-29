@@ -246,6 +246,18 @@ procedure Interp_Demo is
                              Completion  => Add (B.Stub)));
    Area_S    : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
+   --  generic-formal-type demo: the formal type "Element", Are_Equal's two
+   --  parameters, and the actual type names "Integer" / "String".
+   Element_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Element")));
+   AE_A         : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   AE_B         : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   Integer_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Integer")));
+   String_Type  : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("String")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -437,6 +449,10 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Subprogram
              (Specification => Add (B.Subprogram_Declaration
                 (Designator => Designator, Header => Header)))));
+   --  a "type Name is private;" generic formal type.
+   function Generic_Type_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name => Name_Def, Definition => Add (B.Formal_Private_Type))));
    function Instance_Of (Generic_Def : Cursor; Actuals : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -1276,6 +1292,40 @@ procedure Interp_Demo is
    Subunit_Program : constant Cursor :=
      Seq ([Print (Sub_Call (Area_Def, [Lit (5)]))]);
 
+   --  generic
+   --     type Element is private;
+   --  function Are_Equal (A, B : Element) return Boolean is
+   --  begin return A = B; end;        -- uses only "=", available for any type
+   Are_Equal : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Are_Equal"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Type_Formal (Element_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (AE_A), In_Par (AE_B)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Eq, Ref (AE_A), Ref (AE_B)))])));
+
+   --  function Int_Eq is new Are_Equal (Integer);
+   --  function Str_Eq is new Are_Equal (String);   -- same body, different types
+   Int_Eq : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Int_Eq"),
+             Completion => Instance_Of (Are_Equal,
+               [Add (B.Used_Name (Definition => Integer_Type))])));
+   Str_Eq : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Str_Eq"),
+             Completion => Instance_Of (Are_Equal,
+               [Add (B.Used_Name (Definition => String_Type))])));
+
+   --  Put_Line (Int_Eq (4, 4));        -- True
+   --  Put_Line (Str_Eq ("hi", "hi"));  -- True
+   --  Put_Line (Str_Eq ("hi", "bye")); -- False
+   Formal_Type_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Int_Eq, [Lit (4), Lit (4)])),
+           Print (Sub_Call (Str_Eq, [Str_Lit ("hi"), Str_Lit ("hi")])),
+           Print (Sub_Call (Str_Eq, [Str_Lit ("hi"), Str_Lit ("bye")]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1642,6 +1692,22 @@ begin
    Complete (Area_Def, Func_Spec ([In_Par (Area_S)]),
              Blk ([], [Ret (Bin (Op_Mul, Ref (Area_S), Ref (Area_S)))]));
    Diana.Interpreter.Run (Subunit_Program);
+
+   --  Generic formal types: one generic body instantiated over two actual
+   --  types.  The formal type is erased at runtime (values are dynamically
+   --  typed), so the same body works over integers and strings.
+   New_Line;
+   Put_Line ("Executing (generic formal types):");
+   Put_Line ("    generic type Element is private;");
+   Put_Line ("    function Are_Equal (A, B : Element) return Boolean");
+   Put_Line ("       is begin return A = B; end;");
+   Put_Line ("    function Int_Eq is new Are_Equal (Integer);");
+   Put_Line ("    function Str_Eq is new Are_Equal (String);");
+   Put_Line ("    Put_Line (Int_Eq (4, 4)); Put_Line (Str_Eq (""hi"", ""hi""));");
+   Put_Line ("    Put_Line (Str_Eq (""hi"", ""bye""));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Formal_Type_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
