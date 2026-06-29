@@ -1116,6 +1116,31 @@ package body Diana.Interpreter is
             end if;
          end;
 
+      elsif Is_Attribute_Call (Expr) then                     --  T'Attr (X)
+         declare
+            Prefix : constant Cursor := As_Attribute_Call (Expr).Prefix;
+         begin
+            if not Is_Attribute_Reference (Prefix) then
+               raise Interpretation_Error with "unsupported attribute call";
+            end if;
+            declare
+               Attribute : constant String := Spelling_Of
+                 (Definition_Of (As_Attribute_Reference (Prefix).Attribute));
+               Arg : constant Long_Long_Integer :=
+                 Whole_Of (Evaluate (As_Attribute_Call (Expr).Argument, Env, Current));
+            begin
+               --  discrete attributes: enumeration values are their position, so
+               --  Succ / Pred are +/-1 and Pos / Val are the identity.
+               if    Attribute = "Succ" then return Int (Arg + 1);
+               elsif Attribute = "Pred" then return Int (Arg - 1);
+               elsif Attribute = "Pos"  then return Int (Arg);
+               elsif Attribute = "Val"  then return Int (Arg);
+               else
+                  raise Interpretation_Error with "unsupported attribute: " & Attribute;
+               end if;
+            end;
+         end;
+
       elsif Is_Declare_Expression (Expr) then
          declare
             Inner : constant Positive := Enter (Env, Current);

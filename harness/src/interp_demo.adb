@@ -147,6 +147,14 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Last")));
    Length_Attr : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Length")));
+   Succ_Attr   : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Succ")));
+   Pred_Attr   : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Pred")));
+   Pos_Attr    : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Pos")));
+   Val_Attr    : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Val")));
    Old_Attr    : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
    My_Error    : constant Cursor :=
@@ -159,6 +167,8 @@ procedure Interp_Demo is
    --  their 0-based position, which is how the interpreter represents them.
    Color_Type : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Color")));
+   Int_Type   : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Integer")));
    Red_Lit    : constant Cursor :=
      Add (B.Enumeration_Literal_Name (Spelling => SU.To_Unbounded_String ("Red"),
                                       Position => 0));
@@ -494,6 +504,14 @@ procedure Interp_Demo is
              (Prefix    => Prefix,
               Attribute => Add (B.Used_Name (Definition => Attr_Def)))));
 
+   --  "Type_Def'Attr (Arg)" -- a scalar attribute ('Succ / 'Pred / 'Pos / 'Val).
+   function Attr_Call (Type_Def, Attr_Def, Arg : Cursor) return Cursor is
+     (Add (B.Attribute_Call
+             (Prefix   => Add (B.Attribute_Reference
+                (Prefix    => Add (B.Used_Name (Definition => Type_Def)),
+                 Attribute => Add (B.Used_Name (Definition => Attr_Def)))),
+              Argument => Arg)));
+
    --  "raise Exc [with Message];", a "when Exc => Stmts" handler, and a block
    --  statement with exception handlers.
    function Raise_Exc (Exc_Def : Cursor; Message : Cursor := No_Element)
@@ -770,6 +788,14 @@ procedure Interp_Demo is
                        Seq ([Assign (Total_Def,
                                      Bin (Op_Plus, Ref (Total_Def), Lit (1)))])),
          Print (Ref (Total_Def))]);
+
+   --  Put_Line (Integer'Succ (5)); Put_Line (Integer'Pred (5));   -- 6, 4
+   --  Put_Line (Color'Pos (Blue)); Put_Line (Color'Val (1));      -- 2, 1
+   Attr_Call_Program : constant Cursor :=
+     Seq ([Print (Attr_Call (Int_Type, Succ_Attr, Lit (5))),                  -- 6
+           Print (Attr_Call (Int_Type, Pred_Attr, Lit (5))),                  -- 4
+           Print (Attr_Call (Color_Type, Pos_Attr, Ref (Blue_Lit))),          -- 2
+           Print (Attr_Call (Color_Type, Val_Attr, Lit (1)))]);               -- 1
 
    --  function Double (X : Integer) return Integer
    --     with Pre => X >= 0, Post => Result = X + X is begin return X + X; end;
@@ -1160,6 +1186,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Enum_Program);
+
+   --  Scalar attributes 'Succ / 'Pred / 'Pos / 'Val.
+   New_Line;
+   Put_Line ("Executing (scalar attributes 'Succ / 'Pred / 'Pos / 'Val):");
+   Put_Line ("    Put_Line (Integer'Succ (5)); Put_Line (Integer'Pred (5));");
+   Put_Line ("    Put_Line (Color'Pos (Blue)); Put_Line (Color'Val (1));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Attr_Call_Program);
 
    --  Runtime contract checks: a pragma Assert that holds, and a subprogram
    --  Pre/Post that hold.
