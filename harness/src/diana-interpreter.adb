@@ -1,5 +1,6 @@
 with Ada.Text_IO;                           use Ada.Text_IO;
 with Ada.Containers.Indefinite_Hashed_Maps;
+with Ada.Containers.Indefinite_Hashed_Sets;
 with Ada.Containers.Vectors;
 with Ada.Strings.Fixed;
 with Ada.Strings.Hash;
@@ -23,9 +24,15 @@ package body Diana.Interpreter is
       Hash            => Ada.Strings.Hash,
       Equivalent_Keys => "=");
 
+   package Name_Sets is new Ada.Containers.Indefinite_Hashed_Sets
+     (Element_Type        => String,
+      Hash                => Ada.Strings.Hash,
+      Equivalent_Elements => "=");
+
    type Scope is record
       Bindings : Value_Maps.Map;
-      Parent   : Natural := 0;        --  enclosing scope index, 0 = none
+      Subs     : Name_Sets.Set;        --  subprograms declared here (static link)
+      Parent   : Natural := 0;         --  enclosing scope index, 0 = none
    end record;
 
    package Scope_Vectors is new Ada.Containers.Vectors (Positive, Scope);
@@ -43,7 +50,10 @@ package body Diana.Interpreter is
    --  Push a fresh scope whose enclosing scope is Parent; return its index.
    function Enter (Env : in out Environment; Parent : Natural) return Positive is
    begin
-      Env.Scopes.Append (Scope'(Bindings => Value_Maps.Empty_Map, Parent => Parent));
+      Env.Scopes.Append
+        (Scope'(Bindings => Value_Maps.Empty_Map,
+                Subs     => Name_Sets.Empty_Set,
+                Parent   => Parent));
       return Env.Scopes.Last_Index;
    end Enter;
 
@@ -92,6 +102,23 @@ package body Diana.Interpreter is
       end loop;
       Define (Env, Global_Scope, Name, Value);
    end Assign;
+
+   --  The static link for a call: the innermost enclosing scope that declares
+   --  the subprogram Name (so a nested subprogram closes over that activation's
+   --  locals); the global scope if it is a top-level subprogram.
+   function Static_Link (Env : Environment; Current : Positive; Name : String)
+     return Positive
+   is
+      I : Natural := Current;
+   begin
+      while I /= 0 loop
+         if Env.Scopes (I).Subs.Contains (Name) then
+            return I;
+         end if;
+         I := Env.Scopes (I).Parent;
+      end loop;
+      return Global_Scope;
+   end Static_Link;
 
    --  ---- value helpers ------------------------------------------------------
    function Int  (V : Long_Long_Integer) return Static_Value
@@ -186,8 +213,9 @@ package body Diana.Interpreter is
    function Invoke (Definition : Cursor; Actuals : Node_List;
                     Env : in out Environment; Current : Positive) return Static_Value;
 
-   --  Elaborate object declarations (variables / constants) into Scope_Index,
-   --  evaluating their initialisers; other declaration kinds are ignored here.
+   --  Elaborate a declarative part into Scope_Index: object declarations
+   --  (variables / constants) bind their initialised values, and nested
+   --  subprogram bodies register their name so calls close over this scope.
    procedure Elaborate (Decls : Node_List; Env : in out Environment;
                         Scope_Index : Positive)
    is
@@ -209,6 +237,15 @@ package body Diana.Interpreter is
          elsif Is_Constant_Declaration (D) then
             Declare_Objects (As_Constant_Declaration (D).Names,
                              As_Constant_Declaration (D).Initialization);
+         elsif Is_Subprogram_Body (D) then
+            declare
+               Designator : constant Cursor := As_Subprogram_Body (D).Designator;
+            begin
+               if Is_Subprogram_Name (Designator) then
+                  Env.Scopes.Reference (Scope_Index).Subs.Include
+                    (Spelling_Of (Designator));
+               end if;
+            end;
          end if;
       end loop;
    end Elaborate;
@@ -409,7 +446,8 @@ package body Diana.Interpreter is
          end if;
       end loop;
 
-      Call := Enter (Env, Global_Scope);
+      --  the call scope's lexical parent is where the subprogram was declared
+      Call := Enter (Env, Static_Link (Env, Current, Spelling_Of (Definition)));
       for I in 1 .. Count loop
          Define (Env, Call, Spelling_Of (Formals (I)), Values (I));
       end loop;

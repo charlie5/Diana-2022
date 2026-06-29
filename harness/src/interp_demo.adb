@@ -96,6 +96,11 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Pi")));
    Radius_Def : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Radius")));
+   --  closure demo: Outer's parameter N, Inner's parameter M.
+   N_Outer : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
+   M_Inner : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("M")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -235,6 +240,14 @@ procedure Interp_Demo is
                      Actuals => Add (B.Association_S (List => Items))));
    end Call_Proc;
 
+   --  an "in" parameter, a function spec, and a nested subprogram-body item.
+   function In_Par (Def : Cursor) return Cursor is
+     (Add (B.In_Parameter (Names => Add (B.Defining_Name_S (List => NL ([Def]))))));
+   function Func_Spec (Params : Cursor_Array) return Cursor is
+     (Add (B.Function_Header (Parameters => Add (B.Parameter_S (List => NL (Params))))));
+   function Sub_Body_Item (Designator : Cursor) return Cursor is
+     (Add (B.Subprogram_Body (Designator => Designator)));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -328,6 +341,26 @@ procedure Interp_Demo is
                        Str_Lit ("!"))),
            Print (Bin (Op_Le, Ref (Radius_Def), Ref (Pi_Def)))]);
 
+   --  function Outer (N : Integer) return Integer is
+   --     function Inner (M : Integer) return Integer is begin return M + N; end;
+   --     begin return Inner (10); end;        -- Inner closes over Outer's N
+   Inner_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Inner"),
+             Specification => Func_Spec ([In_Par (M_Inner)]),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus, Ref (M_Inner),
+                                                  Ref (N_Outer)))])));
+   Outer_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Outer"),
+             Specification => Func_Spec ([In_Par (N_Outer)]),
+             Completion    => Blk ([Sub_Body_Item (Inner_Name)],
+                                   [Ret (Sub_Call (Inner_Name, [Lit (10)]))])));
+
+   --  Put_Line (Outer (5));   -- 15  (Inner returns 10 + Outer's N)
+   Closure_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Outer_Name, [Lit (5)]))]);
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -409,6 +442,18 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Values_Program);
+
+   --  Nested subprograms and closures: Inner reads Outer's parameter N.
+   New_Line;
+   Put_Line ("Executing (nested subprograms + closures):");
+   Put_Line ("    function Outer (N : Integer) return Integer is");
+   Put_Line ("       function Inner (M : Integer) return Integer is");
+   Put_Line ("          begin return M + N; end;          -- closes over N");
+   Put_Line ("       begin return Inner (10); end;");
+   Put_Line ("    Put_Line (Outer (5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Closure_Program);
 
    --  The execute-or-error requirement: running a use of an unbound variable
    --  must fail rather than produce a wrong answer.
