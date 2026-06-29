@@ -281,6 +281,12 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
    Reduce_B   : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   --  in-out-generic-formal demo: Tick's "in out" formal object "Counter" and
+   --  the caller's actual variable "Count".
+   Counter_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Counter")));
+   Count_Def   : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Count")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -489,6 +495,11 @@ procedure Interp_Demo is
              (Names   => Add (B.Defining_Name_S (List => NL ([Name_Def]))),
               Mode    => Add (B.Generic_In),
               Default => Default_Expr)));
+   --  an "in out" generic formal object (aliases an actual variable).
+   function Generic_InOut_Object (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Object
+             (Names => Add (B.Defining_Name_S (List => NL ([Name_Def]))),
+              Mode  => Add (B.Generic_In_Out))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1453,6 +1464,31 @@ procedure Interp_Demo is
            Print (Sub_Call (Default_Reduce, [Lit (6), Lit (7)])),
            Print (Sub_Call (Times_Reduce,   [Lit (6), Lit (7)]))]);
 
+   --  generic
+   --     Counter : in out Integer;        -- an "in out" formal object
+   --  procedure Tick is begin Counter := Counter + 1; end;
+   Tick : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Tick"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_InOut_Object (Counter_Def)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Proc_Spec ([]))),
+             Completion    => Blk ([], [Assign (Counter_Def,
+               Bin (Op_Plus, Ref (Counter_Def), Lit (1)))])));
+   --  procedure Step is new Tick (Counter => Count);  -- Count is the actual
+   Step : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Step"),
+             Completion => Instance_Of (Tick, [Ref (Count_Def)])));
+
+   --  Count := 0; Step; Step; Step; Put_Line (Count);   -- 3 (the actual is updated)
+   InOut_Formals_Program : constant Cursor :=
+     Block_Stmt
+       ([Var_Decl (Count_Def, Lit (0))],
+        [Call_Proc (Step, []), Call_Proc (Step, []), Call_Proc (Step, []),
+         Print (Ref (Count_Def))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1866,6 +1902,18 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Default_Formals_Program);
+
+   --  "in out" generic formal objects: the formal aliases an actual variable, so
+   --  the instance reads and writes it (here, accumulating across calls).
+   New_Line;
+   Put_Line ("Executing (in out generic formal objects):");
+   Put_Line ("    generic Counter : in out Integer;");
+   Put_Line ("    procedure Tick is begin Counter := Counter + 1; end;");
+   Put_Line ("    Count := 0; procedure Step is new Tick (Count);");
+   Put_Line ("    Step; Step; Step; Put_Line (Count);   -- 3, the actual is updated");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (InOut_Formals_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

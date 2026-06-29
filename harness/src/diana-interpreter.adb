@@ -873,6 +873,8 @@ package body Diana.Interpreter is
       Values    : Value_Vectors.Vector;
       Gen_Formal_Nodes : Node_List;   --  generic formals (objects + subprograms)
       Gen_Actuals      : Node_List;   --  the instantiation's actuals (parallel)
+      Gen_Out_Formals  : Node_List;   --  in-out formal-object names (copy back)
+      Gen_Out_Actuals  : Node_List;   --  their actual variables (parallel)
       Call      : Positive;
       Count     : Natural;
       Result    : Static_Value;
@@ -1006,10 +1008,21 @@ package body Diana.Interpreter is
                      raise Interpretation_Error with
                        "missing generic actual (no default) in " & Name;
                   end if;
-                  Define (Env, Call,
-                          Spelling_Of (As_Defining_Name_S
-                            (As_Generic_Formal_Object (F).Names).List.First_Element),
-                          Evaluate (Value_Expr, Env, Current));
+                  declare
+                     Formal_Name : constant Cursor := As_Defining_Name_S
+                       (As_Generic_Formal_Object (F).Names).List.First_Element;
+                  begin
+                     Define (Env, Call, Spelling_Of (Formal_Name),
+                             Evaluate (Value_Expr, Env, Current));
+                     --  an "in out" formal aliases its actual variable: record
+                     --  it so the formal's final value is copied back on exit.
+                     if Has_Actual
+                       and then Is_Generic_In_Out (As_Generic_Formal_Object (F).Mode)
+                     then
+                        Gen_Out_Formals.Append (Formal_Name);
+                        Gen_Out_Actuals.Append (A);
+                     end if;
+                  end;
                end;
             elsif Is_Generic_Formal_Subprogram (F) then
                declare
@@ -1170,6 +1183,13 @@ package body Diana.Interpreter is
                   Assign (Env, Current, Target, Final);
                end;
             end if;
+         end loop;
+
+         --  copy back each "in out" generic formal object to its actual variable
+         for I in 1 .. Natural (Gen_Out_Formals.Length) loop
+            Assign (Env, Current,
+                    Spelling_Of (Definition_Of (Gen_Out_Actuals (I))),
+                    Lookup (Env, Call, Spelling_Of (Gen_Out_Formals (I))));
          end loop;
       end if;
 

@@ -116,8 +116,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   the template dispatch to, formal **types** erased — one body runs over each
   actual type, e.g. `Are_Equal` instantiated for `Integer` and `String` — and
   formal **packages** bound to an actual instance, so `P.Member` resolves through
-  it; with **defaults** for omitted object/subprogram formals) — and generic
-  packages: `package I is new G (Actuals)`
+  it; with **defaults** for omitted object/subprogram formals and **`in out`**
+  formal objects that alias an actual variable) — and generic packages:
+  `package I is new G (Actuals)`
   elaborates `G`'s visible declarations into a fresh instance scope (nestable in a
   block), with `I.Member` and `I.Sub (...)` resolving through it; and child generic
   packages (`package C is new I.Child (Actuals)`), whose instance nests in the
