@@ -81,7 +81,8 @@ package body Diana.Library is
       Lib.Forest.Update_Element (Stub, Add'Access);
    end Reference;
 
-   procedure Merge (Lib : in out Instance; Name : String; Declared : String) is
+   procedure Merge (Lib : in out Instance; Name : String; Declared : String;
+                    Kind : Unit_Kind := Object_Unit) is
       Stub   : constant Cursor := Find_Unit (Lib, Name);
       Refs   : Referrer_Vectors.Vector;
       Comp   : Cursor;
@@ -103,12 +104,25 @@ package body Diana.Library is
          Refs := Pending_Unit (Trees.Element (Stub)).Referrers;
       end if;
 
-      --  Build the real compilation and its single declared entity (modelled,
-      --  for this demo, as a defining-name node carrying the entity spelling).
+      --  Build the real compilation and its single declared entity.  An object
+      --  unit declares a defining-name node carrying the entity spelling; a
+      --  generic-package unit declares a Generic_Name whose specification is a
+      --  package specification (here empty) — a separately-compiled generic.
       Comp := Add_Compilation (Lib, Name);
-      Lib.Forest.Append_Child
-        (Comp,
-         Diana.Builders.Variable_Name (Spelling => To_Unbounded_String (Declared)));
+      case Kind is
+         when Object_Unit =>
+            Lib.Forest.Append_Child
+              (Comp,
+               Diana.Builders.Variable_Name
+                 (Spelling => To_Unbounded_String (Declared)));
+         when Generic_Package_Unit =>
+            Lib.Forest.Append_Child (Comp, Diana.Builders.Package_Specification);
+            Lib.Forest.Append_Child
+              (Comp,
+               Diana.Builders.Generic_Name
+                 (Spelling      => To_Unbounded_String (Declared),
+                  Specification => Trees.Last_Child (Comp)));
+      end case;
       Def := Trees.Last_Child (Comp);
 
       --  Re-target every referrer that wanted the declared entity, in place.

@@ -23,19 +23,25 @@ procedure Diana_Harness is
    P_Stub   : Cursor;
    Use_Site : Cursor;
 
-   --  Report what the used occurrence at Use_Site currently resolves to.
-   procedure Show_Resolution is
+   --  Report what the used occurrence at Site currently resolves to.  A
+   --  Generic_Name is reported specially (it is a separately-compiled generic);
+   --  note it is also a Defining_Occurrence, so it must be checked first.
+   procedure Show_Resolution (Site : Cursor; What : String) is
    begin
-      if Diana.Accessors.Is_Used_Name (Use_Site) then
+      if Diana.Accessors.Is_Used_Name (Site) then
          declare
-            Def : constant Cursor := Diana.Accessors.As_Used_Name (Use_Site).Definition;
+            Def : constant Cursor := Diana.Accessors.As_Used_Name (Site).Definition;
          begin
-            if Diana.Accessors.Is_Defining_Occurrence (Def) then
-               Put_Line ("    'Foo' resolves to defining name """
+            if Diana.Accessors.Is_Generic_Name (Def) then
+               Put_Line ("    '" & What & "' resolves to generic package """
+                         & SU.To_String (Diana.Accessors.As_Generic_Name (Def).Spelling)
+                         & """ (a separately-compiled generic).");
+            elsif Diana.Accessors.Is_Defining_Occurrence (Def) then
+               Put_Line ("    '" & What & "' resolves to defining name """
                          & SU.To_String (Diana.Accessors.As_Defining_Occurrence (Def).Spelling)
                          & """ (a loaded compilation).");
             elsif Trees.Element (Def) in Diana.Loading.Pending_Unit'Class then
-               Put_Line ("    'Foo' still points at the stub for unit """
+               Put_Line ("    '" & What & "' still points at the stub for unit """
                          & SU.To_String (Diana.Loading.Pending_Unit (Trees.Element (Def)).Unit_Name)
                          & """ (unresolved).");
             end if;
@@ -75,7 +81,7 @@ begin
    Lib.Reference (Name => "P", Site => Use_Site, Wanted => "Foo");
 
    Put_Line ("Built 'Main', which references entity 'Foo' in unit 'P'.");
-   Show_Resolution;
+   Show_Resolution (Use_Site, "Foo");
    New_Line;
 
    --  2. Executing now must fail: P's DIANA was never supplied.
@@ -93,11 +99,54 @@ begin
    --  3. Merge the separately-compiled P; the reference is fixed up in place.
    Put_Line ("Merging separately-compiled unit 'P' (declares 'Foo') ...");
    Lib.Merge (Name => "P", Declared => "Foo");
-   Show_Resolution;
+   Show_Resolution (Use_Site, "Foo");
    New_Line;
 
    --  4. Now execution is permitted.
    Put_Line ("Re-checking ...");
    Lib.Require_All_Resolved;
    Put_Line ("    all separate compilations present — ready to interpret.");
+   New_Line;
+
+   --  5. Separate compilation of a generic package: a second compilation
+   --     'Client' instantiates generic package 'Stacks', whose template is in a
+   --     separately-compiled unit (so it starts as a stub).  The same merge
+   --     machinery resolves the instantiation's reference to the generic.
+   Put_Line ("Separate compilation of a generic package:");
+   declare
+      Client      : constant Cursor := Lib.Add_Compilation ("Client");
+      Stacks_Stub : constant Cursor := Lib.Require ("Stacks");
+      Gen_Ref     : constant Cursor := Lib.Add_Child
+        (Client, Diana.Builders.Used_Name (Definition => Stacks_Stub));
+      --  "package My_Stack is new Stacks;" — the instantiation refers to Stacks
+      Inst        : constant Cursor := Lib.Add_Child
+        (Client, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Ref));
+
+      --  the instantiation's generic-unit reference (the site to resolve)
+      function Gen_Site return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+   begin
+      Lib.Reference (Name => "Stacks", Site => Gen_Site, Wanted => "Stacks");
+      Put_Line ("    built 'Client': package My_Stack is new Stacks;");
+      Show_Resolution (Gen_Site, "Stacks");
+
+      Put_Line ("    attempting to run with generic 'Stacks' missing ...");
+      begin
+         Lib.Require_All_Resolved;
+         Put_Line ("    (unexpected) library reported fully resolved");
+      exception
+         when E : Diana.Library.Missing_Compilation =>
+            Put_Line ("    errored out as required: "
+                      & Ada.Exceptions.Exception_Message (E));
+      end;
+
+      Put_Line ("    merging separately-compiled generic package 'Stacks' ...");
+      Lib.Merge (Name     => "Stacks",
+                 Declared => "Stacks",
+                 Kind     => Diana.Library.Generic_Package_Unit);
+      Show_Resolution (Gen_Site, "Stacks");
+
+      Lib.Require_All_Resolved;
+      Put_Line ("    all separate compilations present — ready to interpret.");
+   end;
 end Diana_Harness;
