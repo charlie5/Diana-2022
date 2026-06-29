@@ -287,6 +287,27 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Counter")));
    Count_Def   : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Count")));
+   --  interface-generic-formal-type demo: the formal interface type "Shape", its
+   --  operation "Area" (a formal subprogram) + its parameter, Total's two
+   --  parameters, and two concrete implementations Square_Area / Circle_Area.
+   Shape_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Shape")));
+   Area_Sub   : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Area")));
+   IArea_S    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
+   Total_A    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   Total_B    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   Square_Area_Def : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Square_Area")));
+   SqA_S      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
+   Circle_Area_Def : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Circle_Area")));
+   CiA_R      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("R")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -500,6 +521,12 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Object
              (Names => Add (B.Defining_Name_S (List => NL ([Name_Def]))),
               Mode  => Add (B.Generic_In_Out))));
+   --  a "type Name is interface;" generic formal interface type.
+   function Generic_Interface_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Interface_Type
+                (Kind => Add (B.Ordinary_Interface))))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1489,6 +1516,44 @@ procedure Interp_Demo is
         [Call_Proc (Step, []), Call_Proc (Step, []), Call_Proc (Step, []),
          Print (Ref (Count_Def))]);
 
+   --  generic
+   --     type Shape is interface;                          -- a formal interface
+   --     with function Area (S : Shape) return Integer;    -- its operation
+   --  function Total (A, B : Shape) return Integer is
+   --  begin return Area (A) + Area (B); end;   -- programs to the interface
+   Total : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Total"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Interface_Formal (Shape_Type),
+                 Generic_Sub_Formal (Area_Sub, Func_Spec ([In_Par (IArea_S)]))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (Total_A), In_Par (Total_B)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus,
+               Sub_Call (Area_Sub, [Ref (Total_A)]),
+               Sub_Call (Area_Sub, [Ref (Total_B)])))])));
+
+   --  function Total_Squares is new Total (Integer, Square_Area);  -- Area = S*S
+   --  function Total_Circles is new Total (Integer, Circle_Area);  -- Area = 3*R*R
+   Total_Squares : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Total_Squares"),
+             Completion => Instance_Of (Total,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Square_Area_Def))])));
+   Total_Circles : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Total_Circles"),
+             Completion => Instance_Of (Total,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Circle_Area_Def))])));
+
+   --  Put_Line (Total_Squares (3, 4));  -- 9 + 16 = 25
+   --  Put_Line (Total_Circles (1, 2));  -- 3 + 12 = 15
+   Interface_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Total_Squares, [Lit (3), Lit (4)])),
+           Print (Sub_Call (Total_Circles, [Lit (1), Lit (2)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1914,6 +1979,28 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (InOut_Formals_Program);
+
+   --  Interface generic formal types: a generic over a formal interface type and
+   --  its operation, instantiated with different concrete implementations — the
+   --  "program to an interface" pattern.
+   New_Line;
+   Put_Line ("Executing (interface generic formal types):");
+   Put_Line ("    generic type Shape is interface;");
+   Put_Line ("            with function Area (S : Shape) return Integer;");
+   Put_Line ("    function Total (A, B : Shape) return Integer");
+   Put_Line ("       is begin return Area (A) + Area (B); end;");
+   Put_Line ("    function Total_Squares is new Total (Integer, Square_Area);");
+   Put_Line ("    function Total_Circles is new Total (Integer, Circle_Area);");
+   Put_Line ("    Put_Line (Total_Squares (3, 4)); Put_Line (Total_Circles (1, 2));");
+   New_Line;
+   Put_Line ("Output:");
+   --  the concrete implementations of the interface's Area operation
+   Complete (Square_Area_Def, Func_Spec ([In_Par (SqA_S)]),
+             Blk ([], [Ret (Bin (Op_Mul, Ref (SqA_S), Ref (SqA_S)))]));
+   Complete (Circle_Area_Def, Func_Spec ([In_Par (CiA_R)]),
+             Blk ([], [Ret (Bin (Op_Mul, Lit (3), Bin (Op_Mul, Ref (CiA_R),
+                                                       Ref (CiA_R))))]));
+   Diana.Interpreter.Run (Interface_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
