@@ -4,7 +4,7 @@ project Diana_Harness is
    for Source_Dirs use ("src");
    for Object_Dir  use "obj";
    for Exec_Dir    use ".";
-   for Main        use ("diana_harness.adb");
+   for Main        use ("diana_harness.adb", "interp_demo.adb");
 
    package Compiler is
       for Default_Switches ("Ada") use

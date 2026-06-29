@@ -24,8 +24,9 @@ The **spec is substantially complete** and the **interpretive harness has been s
 The harness is an Ada 2022 / GNAT project under `harness/`:
 
 ```sh
-gprbuild -P harness/diana_harness.gpr   # build (object dir harness/obj, exec harness/diana_harness)
-harness/diana_harness                   # run the separate-compilation demo
+gprbuild -P harness/diana_harness.gpr   # build both demos (object dir harness/obj)
+harness/diana_harness                   # the separate-compilation + builder/accessor demo
+harness/interp_demo                     # build a small program and execute it (the interpreter)
 ```
 
 Architecture (decided with Shark8 — see the header of `harness/src/diana.ads`):
@@ -86,10 +87,12 @@ These are deliberate modeling choices that span the whole IR — preserve them:
 ## Test harness requirements
 
 The interpretive harness must:
-- Execute a given DIANA tree, and **error out if execution cannot be completed** (e.g. a missing separate compilation unit) — demonstrated by `Require_All_Resolved` / `Missing_Compilation`.
+- Execute a given DIANA tree, and **error out if execution cannot be completed** — demonstrated two ways: a missing separate compilation (`Require_All_Resolved` / `Missing_Compilation`) and an unexecutable tree (`Diana.Interpreter` / `Interpretation_Error`, e.g. an unbound variable).
 - Provide a way to **merge in separately-compiled DIANA** — demonstrated by `Diana.Library.Merge`.
 
-Still open: the tree interpreter / execution semantics. The current `diana_harness.adb` driver exercises the builder/accessor API and the merge / error-on-missing path end to end.
+`Diana.Interpreter` is a first execution slice: it walks a tree through the accessors and evaluates it over the `Static_Value` model — integer/boolean literals, variable references, built-in operator calls (arithmetic + comparison), assignment, if-statements, while-loops, statement sequences, and `Put_Line`. `interp_demo.adb` builds a `while`-loop summation and runs it (prints 15), then shows the error path.
+
+Still open: broadening the interpreter (real/string/access values, subprogram calls and a call stack, declarations/scopes, the full statement set). `diana_harness.adb` exercises the builder/accessor API and the merge / error-on-missing path; `interp_demo.adb` exercises execution.
 
 ## Reference sources
 
