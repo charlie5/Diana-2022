@@ -140,7 +140,10 @@ units whose doubly-nested-selected-name instantiation resolves as the chain is
 merged top-down, and a **subunit** (`Engine.Process`, an `is separate` body) whose
 body stub is completed in place by `Merge_Subunit` — including a **subunit of a
 generic package** (`Allocators.Free`), where the generic is resolved via its
-instantiation and its body's separate subunit is completed once present.
+instantiation and its body's separate subunit is completed once present, and a
+**subunit of a child generic package** (`Containers.Vectors.Reserve`) — the
+deepest combination, a child generic loaded beneath its parent whose body's
+separate subunit is then completed.
 
 ## Harness requirements
 

@@ -585,4 +585,93 @@ begin
                    & "its subunit body both resolved.");
       end;
    end;
+   New_Line;
+
+   --  12. Separate compilation of a SUBUNIT OF A CHILD GENERIC PACKAGE — the
+   --      deepest combination so far.  'Containers.Vectors' is a generic child
+   --      of package 'Containers' (both separately compiled, child beneath
+   --      parent); the child generic's body carries "procedure Reserve is
+   --      separate;", a subunit 'Containers.Vectors.Reserve' separately compiled
+   --      and completed once the child generic is present.
+   Put_Line ("Separate compilation of a subunit of a child generic package:");
+   declare
+      Client7      : constant Cursor := Lib.Add_Compilation ("Client7");
+      Parent_Stub  : constant Cursor := Lib.Require ("Containers");
+      Child_Stub   : constant Cursor := Lib.Require ("Containers.Vectors");
+      Prefix_Ref   : constant Cursor := Lib.Add_Child
+        (Client7, Diana.Builders.Used_Name (Definition => Parent_Stub));
+      Selector_Ref : constant Cursor := Lib.Add_Child
+        (Client7, Diana.Builders.Used_Name (Definition => Child_Stub));
+      Gen_Unit     : constant Cursor := Lib.Add_Child
+        (Client7, Diana.Builders.Selected_Component
+                    (Prefix => Prefix_Ref, Selector => Selector_Ref));
+      --  "package V is new Containers.Vectors;"
+      Inst         : constant Cursor := Lib.Add_Child
+        (Client7, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Unit));
+
+      function Sel return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+      function Parent_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Prefix);
+      function Child_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Selector);
+   begin
+      Lib.Reference (Name => "Containers", Site => Parent_Site,
+                     Wanted => "Containers");
+      Lib.Reference (Name => "Containers.Vectors", Site => Child_Site,
+                     Wanted => "Vectors");
+      Put_Line ("    built 'Client7': package V is new Containers.Vectors;");
+      Show_Resolution (Parent_Site, "Containers");
+      Show_Resolution (Child_Site, "Vectors");
+
+      --  merge the parent package, then the child generic beneath it
+      Put_Line ("    merging package 'Containers', then child generic "
+                & "'Containers.Vectors' ...");
+      Lib.Merge (Name => "Containers", Declared => "Containers",
+                 Kind => Diana.Library.Package_Unit);
+      Lib.Merge (Name => "Containers.Vectors", Declared => "Vectors",
+                 Kind => Diana.Library.Generic_Package_Unit,
+                 Parent => "Containers");
+      Show_Resolution (Parent_Site, "Containers");
+      Show_Resolution (Child_Site, "Vectors");
+
+      --  the child generic's body has "procedure Reserve is separate;"
+      declare
+         Child_Body : constant Cursor := Lib.Require ("Containers.Vectors"); -- loaded
+         Reserve_Id : constant Cursor := Lib.Add_Child
+           (Child_Body, Diana.Builders.Subprogram_Name
+                          (Spelling => SU.To_Unbounded_String ("Reserve")));
+         Stub_Node  : constant Cursor := Lib.Add_Child
+           (Child_Body, Diana.Builders.Stub);
+         Reserve_Body : constant Cursor := Lib.Add_Child
+           (Child_Body, Diana.Builders.Subprogram_Body
+                          (Designator => Reserve_Id, Completion => Stub_Node));
+      begin
+         Lib.Reference (Name => "Containers.Vectors.Reserve",
+                        Site => Reserve_Body, Wanted => "Reserve");
+         Put_Line ("    'Containers.Vectors' body has: procedure Reserve is separate;");
+         Show_Body_Status (Reserve_Body, "Reserve");
+
+         Put_Line ("    attempting to run with subunit "
+                   & "'Containers.Vectors.Reserve' missing ...");
+         begin
+            Lib.Require_All_Resolved;
+            Put_Line ("    (unexpected) library reported fully resolved");
+         exception
+            when E : Diana.Library.Missing_Compilation =>
+               Put_Line ("    errored out as required: "
+                         & Ada.Exceptions.Exception_Message (E));
+         end;
+
+         Put_Line ("    merging subunit 'Containers.Vectors.Reserve' of the "
+                   & "child generic ...");
+         Lib.Merge_Subunit (Name   => "Containers.Vectors.Reserve",
+                            Parent => "Containers.Vectors");
+         Show_Body_Status (Reserve_Body, "Reserve");
+
+         Lib.Require_All_Resolved;
+         Put_Line ("    all separate compilations present — child generic and "
+                   & "its subunit body both resolved.");
+      end;
+   end;
 end Diana_Harness;
