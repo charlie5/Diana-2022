@@ -330,6 +330,20 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Hi")));
    Level_Type : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Level")));
+   --  access-generic-formal-type demo: the formal access type "Int_Ptr",
+   --  Deref_Sum's two parameters, the actual access type "Cell", and two pointers.
+   Int_Ptr_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Int_Ptr")));
+   DS_A      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   DS_B      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   Cell_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Cell")));
+   Ptr_P     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("P")));
+   Ptr_Q     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Q")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -560,6 +574,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Signed_Integer))));
+   --  a "type Name is access ...;" generic formal access-to-object type.
+   function Generic_Access_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Access_To_Object))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1659,6 +1678,36 @@ procedure Interp_Demo is
            Print (Sub_Call (Clamp_Level, [Lit (50),  Lit (0), Lit (100)])),
            Print (Sub_Call (Clamp_Level, [Lit (-5),  Lit (0), Lit (100)]))]);
 
+   --  generic
+   --     type Int_Ptr is access Integer;     -- a formal access-to-object type
+   --  function Deref_Sum (A, B : Int_Ptr) return Integer is
+   --  begin return A.all + B.all; end;        -- uses the access "all" dereference
+   Deref_Sum : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Deref_Sum"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Access_Formal (Int_Ptr_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (DS_A), In_Par (DS_B)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus,
+               Deref (Ref (DS_A)), Deref (Ref (DS_B))))])));
+
+   --  type Cell is access Integer;
+   --  function Sum_Cells is new Deref_Sum (Cell);
+   Sum_Cells : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Sum_Cells"),
+             Completion => Instance_Of (Deref_Sum,
+               [Add (B.Used_Name (Definition => Cell_Type))])));
+
+   --  declare P : Cell := new Integer'(30); Q : Cell := new Integer'(12);
+   --  begin Put_Line (Sum_Cells (P, Q)); end;   -- 30 + 12 = 42
+   Access_Formal_Program : constant Cursor :=
+     Block_Stmt
+       ([Var_Decl (Ptr_P, New_Int (30)),
+         Var_Decl (Ptr_Q, New_Int (12))],
+        [Print (Sub_Call (Sum_Cells, [Ref (Ptr_P), Ref (Ptr_Q)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2137,6 +2186,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Scalar_Formal_Program);
+
+   --  Formal access types: a formal access-to-object type lets the template use
+   --  access operations (here ".all" dereference) on its values; instantiated
+   --  with a concrete access type and passed allocated pointers.
+   New_Line;
+   Put_Line ("Executing (formal access types):");
+   Put_Line ("    generic type Int_Ptr is access Integer;");
+   Put_Line ("    function Deref_Sum (A, B : Int_Ptr) return Integer");
+   Put_Line ("       is begin return A.all + B.all; end;");
+   Put_Line ("    type Cell is access Integer; function Sum_Cells is new Deref_Sum (Cell);");
+   Put_Line ("    declare P : Cell := new Integer'(30); Q : Cell := new Integer'(12);");
+   Put_Line ("    begin Put_Line (Sum_Cells (P, Q)); end;   -- 30 + 12 = 42");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Access_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
