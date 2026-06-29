@@ -46,6 +46,19 @@ package body Diana.Interpreter is
    package Record_Store is new Ada.Containers.Vectors
      (Positive, Value_Maps.Map, Value_Maps."=");
 
+   --  A subprogram's runtime contract: the Pre and Post condition expressions
+   --  (each a list of expression cursors).
+   type Contract is record
+      Pre  : Node_List;
+      Post : Node_List;
+   end record;
+
+   package Contract_Maps is new Ada.Containers.Indefinite_Hashed_Maps
+     (Key_Type        => String,
+      Element_Type    => Contract,
+      Hash            => Ada.Strings.Hash,
+      Equivalent_Keys => "=");
+
    Global_Scope : constant Positive := 1;
 
    --  In-flight control transfer.  At most one of Returning / Exiting / Jumping
@@ -56,6 +69,7 @@ package body Diana.Interpreter is
       Heap         : Value_Vectors.Vector;           --  allocated objects (1-based)
       Arrays       : Array_Store.Vector;             --  array values (1-based)
       Records      : Record_Store.Vector;            --  record values (1-based)
+      Contracts    : Contract_Maps.Map;              --  Pre/Post by subprogram name
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
       Exiting      : Boolean      := False;          --  an exit is in progress
@@ -281,6 +295,37 @@ package body Diana.Interpreter is
       return Spelling_Of (Definition_Of (As_Choice_Expression (Choices (1)).Value));
    end Field_Name;
 
+   --  Record the Pre / Post aspect conditions of a declaration's Properties
+   --  list under the subprogram name, for checking at each call.
+   procedure Register_Contracts (Env : in out Environment; Name : String;
+                                 Properties : Cursor)
+   is
+      Result : Contract;
+   begin
+      if Properties = No_Element or else not Is_Semantic_Property_S (Properties) then
+         return;
+      end if;
+      for P of As_Semantic_Property_S (Properties).List loop
+         if Is_Semantic_Property (P) then
+            declare
+               Identity : constant Cursor := As_Semantic_Property (P).Identity;
+               Value    : constant Cursor := As_Semantic_Property (P).Value;
+            begin
+               if Value /= No_Element and then Is_Aspect_Expression (Value) then
+                  if Is_Aspect_Pre (Identity) then
+                     Result.Pre.Append (As_Aspect_Expression (Value).Value);
+                  elsif Is_Aspect_Post (Identity) then
+                     Result.Post.Append (As_Aspect_Expression (Value).Value);
+                  end if;
+               end if;
+            end;
+         end if;
+      end loop;
+      if not Result.Pre.Is_Empty or else not Result.Post.Is_Empty then
+         Env.Contracts.Include (Name, Result);
+      end if;
+   end Register_Contracts;
+
    --  ---- evaluator / executor / caller (mutually recursive) -----------------
    function Evaluate (Expr : Cursor; Env : in out Environment; Current : Positive)
      return Static_Value;
@@ -319,6 +364,18 @@ package body Diana.Interpreter is
                if Is_Subprogram_Name (Designator) then
                   Env.Scopes.Reference (Scope_Index).Subs.Include
                     (Spelling_Of (Designator));
+               end if;
+            end;
+         elsif Is_Subprogram_Declaration (D) then
+            declare
+               Designator : constant Cursor :=
+                 As_Subprogram_Declaration (D).Designator;
+            begin
+               if Is_Subprogram_Name (Designator) then
+                  Env.Scopes.Reference (Scope_Index).Subs.Include
+                    (Spelling_Of (Designator));
+                  Register_Contracts (Env, Spelling_Of (Designator),
+                                      As_Subprogram_Declaration (D).Properties);
                end if;
             end;
          end if;
@@ -529,6 +586,17 @@ package body Diana.Interpreter is
          Define (Env, Call, Spelling_Of (Formals (I)), Values (I));
       end loop;
 
+      --  precondition checks (over the bound parameters)
+      if Env.Contracts.Contains (Spelling_Of (Definition)) then
+         for Condition of Env.Contracts.Element (Spelling_Of (Definition)).Pre loop
+            if not Bool_Of (Evaluate (Condition, Env, Call)) then
+               Leave (Env, Call);
+               raise Assertion_Error with
+                 "precondition failed in " & Spelling_Of (Definition);
+            end if;
+         end loop;
+      end if;
+
       Env.Returning    := False;
       Env.Return_Value := (Kind => No_Value);
       Run_Block_In (Comp, Env, Call);
@@ -536,6 +604,18 @@ package body Diana.Interpreter is
       Env.Returning := False;
       if Env.Exiting or else Env.Jumping then
          raise Interpretation_Error with "exit or goto cannot leave a subprogram";
+      end if;
+
+      --  postcondition checks (with "Result" bound to the returned value)
+      if Env.Contracts.Contains (Spelling_Of (Definition)) then
+         Define (Env, Call, "Result", Result);
+         for Condition of Env.Contracts.Element (Spelling_Of (Definition)).Post loop
+            if not Bool_Of (Evaluate (Condition, Env, Call)) then
+               Leave (Env, Call);
+               raise Assertion_Error with
+                 "postcondition failed in " & Spelling_Of (Definition);
+            end if;
+         end loop;
       end if;
 
       --  copy out / in out formals back to their actual variables; the actual
@@ -1122,6 +1202,28 @@ package body Diana.Interpreter is
             if not Done and then Others_Branch /= No_Element then
                Execute (Others_Branch, Env, Current);
             end if;
+         end;
+
+      elsif Is_Statement_Pragma (Stmt) then
+         declare
+            Prag : constant Cursor := As_Statement_Pragma (Stmt).Pragma_Item;
+            Name : constant String :=
+              Spelling_Of (Definition_Of (As_Pragma_Item (Prag).Name));
+            Args : constant Node_List :=
+              As_Association_S (As_Pragma_Item (Prag).Arguments).List;
+         begin
+            if Name = "Assert" and then not Args.Is_Empty then
+               if not Bool_Of (Evaluate (As_Positional_Association (Args (1)).Value,
+                                         Env, Current))
+               then
+                  raise Assertion_Error with
+                    (if Natural (Args.Length) >= 2
+                     then Image (Evaluate (As_Positional_Association (Args (2)).Value,
+                                           Env, Current))
+                     else "assertion failed");
+               end if;
+            end if;
+            --  other pragmas are no-ops at runtime
          end;
 
       else

@@ -50,6 +50,7 @@ procedure Interp_Demo is
    Op_Le    : constant Cursor := Add (B.Op_Less_Equal);
    Op_Lt    : constant Cursor := Add (B.Op_Less);
    Op_Gt    : constant Cursor := Add (B.Op_Greater);
+   Op_Ge    : constant Cursor := Add (B.Op_Greater_Equal);
    Op_Eq    : constant Cursor := Add (B.Op_Equal);
    Op_Cat   : constant Cursor := Add (B.Op_Concatenate);
    Sum_Def  : constant Cursor :=
@@ -132,6 +133,13 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("E")));
    Big_Def : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Big")));
+   --  contract demo: a pragma name, a function parameter, and the Post 'Result.
+   Assert_Name : constant Cursor :=
+     Add (B.Pragma_Name (Spelling => SU.To_Unbounded_String ("Assert")));
+   Dbl_X       : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Result_Def  : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Result")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -348,6 +356,28 @@ procedure Interp_Demo is
              (Prefix   => Record_Ref,
               Selector => Add (B.Used_Name (Definition => Field_Def)))));
 
+   --  "pragma Assert (Condition);"
+   function Assert_Stmt (Condition : Cursor) return Cursor is
+     (Add (B.Statement_Pragma (Pragma_Item => Add (B.Pragma_Item
+        (Name      => Add (B.Used_Name (Definition => Assert_Name)),
+         Arguments => Add (B.Association_S (List => NL
+           ([Add (B.Positional_Association (Value => Condition))]))))))));
+
+   --  "with Pre => Condition" / "with Post => Condition" aspects, and a
+   --  subprogram declaration carrying a list of them.
+   function Pre_Aspect (Condition : Cursor) return Cursor is
+     (Add (B.Semantic_Property
+             (Identity => Add (B.Aspect_Pre),
+              Value    => Add (B.Aspect_Expression (Value => Condition)))));
+   function Post_Aspect (Condition : Cursor) return Cursor is
+     (Add (B.Semantic_Property
+             (Identity => Add (B.Aspect_Post),
+              Value    => Add (B.Aspect_Expression (Value => Condition)))));
+   function Sub_Decl (Designator : Cursor; Aspects : Cursor_Array) return Cursor is
+     (Add (B.Subprogram_Declaration
+             (Designator => Designator,
+              Properties => Add (B.Semantic_Property_S (List => NL (Aspects))))));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -538,6 +568,30 @@ procedure Interp_Demo is
                    Filter => Bin (Op_Gt, Ref (E_Def), Lit (4))),
            Print (Ref (Big_Def))]);                                        -- 21
 
+   --  function Double (X : Integer) return Integer
+   --     with Pre => X >= 0, Post => Result = X + X is begin return X + X; end;
+   Double_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Double"),
+             Specification => Func_Spec ([In_Par (Dbl_X)]),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus, Ref (Dbl_X),
+                                                  Ref (Dbl_X)))])));
+   Double_Decl : constant Cursor :=
+     Sub_Decl (Double_Name,
+       [Pre_Aspect (Bin (Op_Ge, Ref (Dbl_X), Lit (0))),
+        Post_Aspect (Bin (Op_Eq, Ref (Result_Def),
+                          Bin (Op_Plus, Ref (Dbl_X), Ref (Dbl_X))))]);
+
+   --  N := 5; pragma Assert (N > 0); Put_Line (N);     -- assert holds -> 5
+   Assert_Program : constant Cursor :=
+     Seq ([Assign (N_Def, Lit (5)),
+           Assert_Stmt (Bin (Op_Gt, Ref (N_Def), Lit (0))),
+           Print (Ref (N_Def))]);
+
+   --  declare <Double with Pre/Post> begin Put_Line (Double (5)); end;  -- 10
+   Contract_Program : constant Cursor :=
+     Block_Stmt ([Double_Decl], [Print (Sub_Call (Double_Name, [Lit (5)]))]);
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -686,8 +740,20 @@ begin
    Put_Line ("Output:");
    Diana.Interpreter.Run (Iterate_Program);
 
-   --  The execute-or-error requirement: an unbound variable and a null
-   --  dereference must both fail rather than produce a wrong answer.
+   --  Runtime contract checks: a pragma Assert that holds, and a subprogram
+   --  Pre/Post that hold.
+   New_Line;
+   Put_Line ("Executing (contracts: pragma Assert, Pre / Post):");
+   Put_Line ("    N := 5; pragma Assert (N > 0); Put_Line (N);");
+   Put_Line ("    function Double (X) with Pre => X >= 0, Post => Result = X + X;");
+   Put_Line ("    Put_Line (Double (5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Assert_Program);
+   Diana.Interpreter.Run (Contract_Program);
+
+   --  The execute-or-error requirement: bad executions and failed contracts
+   --  must all error out rather than produce a wrong answer.
    New_Line;
    Put_Line ("Error paths:");
    declare
@@ -706,5 +772,21 @@ begin
    exception
       when E : Diana.Interpreter.Interpretation_Error =>
          Put_Line ("    'Put_Line (null.all)'  -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- pragma Assert (1 = 2)
+        (Seq ([Assert_Stmt (Bin (Op_Eq, Lit (1), Lit (2)))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Assertion_Error =>
+         Put_Line ("    'pragma Assert (1 = 2)' -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- Double (-1): Pre fails
+        (Block_Stmt ([Double_Decl], [Print (Sub_Call (Double_Name, [Lit (-1)]))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Assertion_Error =>
+         Put_Line ("    'Double (-1)'           -> " & Ada.Exceptions.Exception_Message (E));
    end;
 end Interp_Demo;

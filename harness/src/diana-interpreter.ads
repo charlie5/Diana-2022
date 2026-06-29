@@ -20,4 +20,9 @@ package Diana.Interpreter is
    --  node, a type mismatch in the value model, ...).
    Interpretation_Error : exception;
 
+   --  Raised when a runtime contract check fails: a pragma Assert, or a
+   --  subprogram precondition (Pre) or postcondition (Post).  The program is
+   --  wrong, as opposed to the interpreter being unable to proceed.
+   Assertion_Error : exception;
+
 end Diana.Interpreter;
