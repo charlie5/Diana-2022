@@ -769,7 +769,7 @@ procedure Interp_Demo is
                          Attr (Ref (Arr_Def), Last_Attr),
                          Seq ([Print (Index_At (Ref (Arr_Def), Ref (I_Def)))]))]);
 
-   --  type Color is (Red, Green, Blue);  C := Green;
+   --  type Color is (Red, Green, Blue);  C := Green;  Put_Line (C);          -- Green
    --  case C is when Red => 10; when Green => 20; when Blue => 30; end case;  -- 20
    --  Total := 0; for I in Red .. Blue loop Total := Total + 1; end loop;     -- 3
    Enum_Program : constant Cursor :=
@@ -779,6 +779,7 @@ procedure Interp_Demo is
              (List => NL ([Red_Lit, Green_Lit, Blue_Lit]))))),
            [])],
         [Assign (C_Var, Ref (Green_Lit)),
+         Print (Ref (C_Var)),                          --  prints "Green", not 1
          Case_Of (Ref (C_Var),
             [Alt ([Choice_Expr (Ref (Red_Lit))],   Seq ([Print (Lit (10))])),
              Alt ([Choice_Expr (Ref (Green_Lit))], Seq ([Print (Lit (20))])),
@@ -1179,7 +1180,7 @@ begin
    --  Enumeration-typed case and for (literals are their 0-based position).
    New_Line;
    Put_Line ("Executing (enumeration case + for):");
-   Put_Line ("    type Color is (Red, Green, Blue);  C := Green;");
+   Put_Line ("    type Color is (Red, Green, Blue);  C := Green;  Put_Line (C);");
    Put_Line ("    case C is when Red => 10; when Green => 20; when Blue => 30; end case;");
    Put_Line ("    Total := 0; for I in Red .. Blue loop Total := Total + 1; end loop;");
    Put_Line ("    Put_Line (Total);");

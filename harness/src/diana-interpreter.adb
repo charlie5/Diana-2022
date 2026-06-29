@@ -244,13 +244,18 @@ package body Diana.Interpreter is
    function Str (V : Symbol_Rep) return Static_Value
      is ((Kind => String_Value, Text => V));
 
+   --  Whole / discrete value: an integer, or an enumeration value (its position).
    function Whole_Of (V : Static_Value) return Long_Long_Integer is
    begin
-      if V.Kind /= Integer_Value then
-         raise Interpretation_Error with "expected an integer value";
-      end if;
-      return V.Whole;
+      case V.Kind is
+         when Integer_Value => return V.Whole;
+         when Enum_Value    => return V.Pos;
+         when others        =>
+            raise Interpretation_Error with "expected an integer value";
+      end case;
    end Whole_Of;
+   function Is_Discrete (V : Static_Value) return Boolean
+     is (V.Kind = Integer_Value or else V.Kind = Enum_Value);
 
    function Bool_Of (V : Static_Value) return Boolean is
    begin
@@ -268,6 +273,7 @@ package body Diana.Interpreter is
       case V.Kind is
          when Integer_Value => return Long_Long_Float (V.Whole);
          when Real_Value    => return V.Number;
+         when Enum_Value    => return Long_Long_Float (V.Pos);
          when others        =>
             raise Interpretation_Error with "expected a numeric value";
       end case;
@@ -305,6 +311,7 @@ package body Diana.Interpreter is
                              (Natural'Image (V.Address), Ada.Strings.Both));
          when Array_Value   => return "(array)";
          when Record_Value  => return "(record)";
+         when Enum_Value    => return SU.To_String (V.Lit_Name);   --  by name
          when No_Value      => return "<no value>";
       end case;
    end Image;
@@ -643,10 +650,13 @@ package body Diana.Interpreter is
          end if;
       end Arithmetic;
 
-      --  Equality / ordering over integers, reals, strings (and booleans for =).
+      --  Equality / ordering over discretes (integers / enumerations), reals,
+      --  strings (and booleans / access for =).
       function Equal (A, B : Static_Value) return Boolean is
       begin
-         if Is_Number (A) and then Is_Number (B) then
+         if Is_Discrete (A) and then Is_Discrete (B) then
+            return Whole_Of (A) = Whole_Of (B);
+         elsif Is_Number (A) and then Is_Number (B) then
             return Real_Of (A) = Real_Of (B);
          elsif A.Kind = Boolean_Value and then B.Kind = Boolean_Value then
             return A.Flag = B.Flag;
@@ -661,7 +671,9 @@ package body Diana.Interpreter is
 
       function Less (A, B : Static_Value) return Boolean is
       begin
-         if Is_Number (A) and then Is_Number (B) then
+         if Is_Discrete (A) and then Is_Discrete (B) then
+            return Whole_Of (A) < Whole_Of (B);
+         elsif Is_Number (A) and then Is_Number (B) then
             return Real_Of (A) < Real_Of (B);
          elsif A.Kind = String_Value and then B.Kind = String_Value then
             return SU."<" (A.Text, B.Text);
@@ -1060,10 +1072,13 @@ package body Diana.Interpreter is
          declare
             Def : constant Cursor := Definition_Of (Expr);
          begin
-            --  an enumeration literal is its position; other names are looked up
+            --  an enumeration literal is its position (so it behaves like an
+            --  integer) plus its name (so it prints by name); others are looked up
             if Is_Enumeration_Literal_Name (Def) then
-               return Int (Long_Long_Integer
-                             (As_Enumeration_Literal_Name (Def).Position));
+               return (Kind     => Enum_Value,
+                       Pos      => Long_Long_Integer
+                                     (As_Enumeration_Literal_Name (Def).Position),
+                       Lit_Name => As_Defining_Occurrence (Def).Spelling);
             else
                return Lookup (Env, Current, Spelling_Of (Def));
             end if;

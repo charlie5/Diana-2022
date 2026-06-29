@@ -101,8 +101,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   `'Succ`/`'Pred`/`'Pos`/`'Val`.
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (over an array's elements or a record's components, with the Ada 2022 `when`
-  filter), `case` (over integers or enumerations — a literal is its 0-based
-  position), block statements with local
+  filter), `case` (over integers or enumerations — an enumeration value carries
+  its position *and* name, so it compares/iterates as an integer but prints by
+  name), block statements with local
   declarations, `exit` (incl. named), `goto` + labels, `raise` + exception
   handlers (incl. `when E : ...` occurrence parameters, bare re-raise, and
   `Exception_Name`/`Exception_Message`), `Put_Line`.
