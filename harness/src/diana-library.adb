@@ -1,6 +1,7 @@
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
 with Diana.Loading;          use Diana.Loading;
 with Diana.Nodes;
+with Diana.Builders;
 
 package body Diana.Library is
 
@@ -105,12 +106,9 @@ package body Diana.Library is
       --  Build the real compilation and its single declared entity (modelled,
       --  for this demo, as a defining-name node carrying the entity spelling).
       Comp := Add_Compilation (Lib, Name);
-      declare
-         Entity : Diana.Nodes.Variable_Name;
-      begin
-         Entity.Spelling := To_Unbounded_String (Declared);
-         Lib.Forest.Append_Child (Comp, Entity);
-      end;
+      Lib.Forest.Append_Child
+        (Comp,
+         Diana.Builders.Variable_Name (Spelling => To_Unbounded_String (Declared)));
       Def := Trees.Last_Child (Comp);
 
       --  Re-target every referrer that wanted the declared entity, in place.
