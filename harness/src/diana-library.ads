@@ -17,8 +17,8 @@ package Diana.Library is
    Missing_Compilation : exception;
 
    --  How a merged separate compilation declares its entity: a plain object,
-   --  or a generic package template (a separately-compiled generic).
-   type Unit_Kind is (Object_Unit, Generic_Package_Unit);
+   --  a package, or a generic package template (a separately-compiled generic).
+   type Unit_Kind is (Object_Unit, Package_Unit, Generic_Package_Unit);
 
    function Root_Of (Lib : Instance) return Cursor;
 
@@ -43,12 +43,16 @@ package Diana.Library is
    --  Merge a separately-compiled unit: replace its stub with a real
    --  compilation declaring entity Declared, and re-target every recorded
    --  referrer whose wanted entity matches.  Kind selects the declared node:
-   --  a plain object (the default) or a generic package template, so an
-   --  instantiation that referred to a not-yet-compiled generic resolves to it.
+   --  a plain object (the default), a package, or a generic package template,
+   --  so an instantiation that referred to a not-yet-compiled generic resolves
+   --  to it.  Parent (non-empty) makes this a child unit, loaded beneath its
+   --  parent's compilation; the parent must already be compiled (else
+   --  Missing_Compilation), modelling a child unit's dependency on its parent.
    procedure Merge (Lib      : in out Instance;
                     Name     : String;
                     Declared : String;
-                    Kind     : Unit_Kind := Object_Unit);
+                    Kind     : Unit_Kind := Object_Unit;
+                    Parent   : String := "");
 
    function Is_Pending (Lib : Instance; Name : String) return Boolean;
 

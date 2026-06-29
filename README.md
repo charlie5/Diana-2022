@@ -126,8 +126,10 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 `harness/diana_harness` demonstrates the separate-compilation machinery: it
 builds a unit that references a not-yet-compiled unit, **errors out** on the
 missing compilation, then **merges** the compilation in and resolves the
-reference in place — shown for both a plain object unit and a separately-compiled
-**generic package** that a second compilation instantiates.
+reference in place — shown for a plain object unit, a separately-compiled
+**generic package** that a second compilation instantiates, and a separately-compiled
+**child generic package** (`Buffers.Bounded`) that is rejected until its parent is
+compiled, then resolved through its compound-name instantiation.
 
 ## Harness requirements
 

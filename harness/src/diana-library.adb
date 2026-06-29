@@ -21,17 +21,36 @@ package body Diana.Library is
       end if;
    end Unit_Name_Of;
 
-   --  The cursor of the top-level unit named Name, or No_Element if absent.
+   --  The cursor of the unit named Name anywhere in the forest, or No_Element
+   --  if absent.  Searches the whole forest (not just the top level) so a child
+   --  unit loaded beneath its parent's compilation is still found.
    function Find_Unit (Lib : Instance; Name : String) return Cursor is
+      Result : Cursor := No_Element;
+
+      procedure Visit (C : Cursor) is
+         Child : Cursor := Trees.First_Child (C);
+      begin
+         if Result /= No_Element then
+            return;
+         elsif Unit_Name_Of (Trees.Element (C)) = Name then
+            Result := C;
+            return;
+         end if;
+         while Child /= No_Element loop
+            Visit (Child);
+            exit when Result /= No_Element;
+            Child := Trees.Next_Sibling (Child);
+         end loop;
+      end Visit;
+
       C : Cursor := Trees.First_Child (Lib.Forest.Root);
    begin
       while C /= No_Element loop
-         if Unit_Name_Of (Trees.Element (C)) = Name then
-            return C;
-         end if;
+         Visit (C);
+         exit when Result /= No_Element;
          C := Trees.Next_Sibling (C);
       end loop;
-      return No_Element;
+      return Result;
    end Find_Unit;
 
    function Add_Compilation
@@ -82,9 +101,10 @@ package body Diana.Library is
    end Reference;
 
    procedure Merge (Lib : in out Instance; Name : String; Declared : String;
-                    Kind : Unit_Kind := Object_Unit) is
+                    Kind : Unit_Kind := Object_Unit; Parent : String := "") is
       Stub   : constant Cursor := Find_Unit (Lib, Name);
       Refs   : Referrer_Vectors.Vector;
+      Home   : Cursor := Lib.Forest.Root;   --  where the loaded unit is appended
       Comp   : Cursor;
       Def    : Cursor;
       Target : Cursor;
@@ -97,6 +117,20 @@ package body Diana.Library is
          end if;
       end Retarget;
    begin
+      --  A child unit depends on its parent: the parent must already be a
+      --  loaded compilation, beneath which the child is loaded.  Checked before
+      --  any tree mutation so a premature merge leaves the child stub intact.
+      if Parent /= "" then
+         Home := Find_Unit (Lib, Parent);
+         if Home = No_Element
+           or else Trees.Element (Home) not in Loaded_Unit'Class
+         then
+            raise Missing_Compilation with
+              "child unit '" & Name & "' needs its parent '" & Parent
+              & "' compiled first";
+         end if;
+      end if;
+
       --  Salvage any recorded inbound references before touching the tree.
       if Stub /= No_Element
         and then Trees.Element (Stub) in Pending_Unit'Class
@@ -104,17 +138,27 @@ package body Diana.Library is
          Refs := Pending_Unit (Trees.Element (Stub)).Referrers;
       end if;
 
-      --  Build the real compilation and its single declared entity.  An object
-      --  unit declares a defining-name node carrying the entity spelling; a
-      --  generic-package unit declares a Generic_Name whose specification is a
-      --  package specification (here empty) — a separately-compiled generic.
-      Comp := Add_Compilation (Lib, Name);
+      --  Build the real compilation (beneath its parent if a child unit) and its
+      --  single declared entity.  An object unit declares a defining-name node
+      --  carrying the entity spelling; a package unit a Package_Name; a generic-
+      --  package unit a Generic_Name — both with a (here empty) package
+      --  specification, modelling a separately-compiled (child) generic.
+      Lib.Forest.Append_Child
+        (Home, Loaded_Unit'(Node with Unit_Name => To_Unbounded_String (Name)));
+      Comp := Trees.Last_Child (Home);
       case Kind is
          when Object_Unit =>
             Lib.Forest.Append_Child
               (Comp,
                Diana.Builders.Variable_Name
                  (Spelling => To_Unbounded_String (Declared)));
+         when Package_Unit =>
+            Lib.Forest.Append_Child (Comp, Diana.Builders.Package_Specification);
+            Lib.Forest.Append_Child
+              (Comp,
+               Diana.Builders.Package_Name
+                 (Spelling      => To_Unbounded_String (Declared),
+                  Specification => Trees.Last_Child (Comp)));
          when Generic_Package_Unit =>
             Lib.Forest.Append_Child (Comp, Diana.Builders.Package_Specification);
             Lib.Forest.Append_Child
