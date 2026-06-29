@@ -138,7 +138,9 @@ selector is the cross-unit reference to the separately-compiled child generic, a
 a **grandchild generic package** (`Graphics.Drivers.Pool`) — three separately-compiled
 units whose doubly-nested-selected-name instantiation resolves as the chain is
 merged top-down, and a **subunit** (`Engine.Process`, an `is separate` body) whose
-body stub is completed in place by `Merge_Subunit`.
+body stub is completed in place by `Merge_Subunit` — including a **subunit of a
+generic package** (`Allocators.Free`), where the generic is resolved via its
+instantiation and its body's separate subunit is completed once present.
 
 ## Harness requirements
 

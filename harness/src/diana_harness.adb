@@ -521,4 +521,68 @@ begin
       Put_Line ("    all separate compilations present — "
                 & "subunit body completed in place.");
    end;
+   New_Line;
+
+   --  11. Separate compilation of a SUBUNIT OF A GENERIC PACKAGE — combining two
+   --      capabilities.  The generic package 'Allocators' is itself separately
+   --      compiled (resolved via an instantiation), and its body carries
+   --      "procedure Free is separate;" — a subunit of the generic, separately
+   --      compiled and completed once the generic is present.
+   Put_Line ("Separate compilation of a subunit of a generic package:");
+   declare
+      Client6  : constant Cursor := Lib.Add_Compilation ("Client6");
+      Gen_Ref  : constant Cursor := Lib.Add_Child
+        (Client6, Diana.Builders.Used_Name (Definition => Lib.Require ("Allocators")));
+      --  "package Mem is new Allocators;"
+      Inst     : constant Cursor := Lib.Add_Child
+        (Client6, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Ref));
+      function Gen_Site return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+   begin
+      Lib.Reference (Name => "Allocators", Site => Gen_Site, Wanted => "Allocators");
+      Put_Line ("    built 'Client6': package Mem is new Allocators;");
+      Show_Resolution (Gen_Site, "Allocators");
+
+      --  merge the generic package; the instantiation resolves to it
+      Put_Line ("    merging separately-compiled generic package 'Allocators' ...");
+      Lib.Merge (Name => "Allocators", Declared => "Allocators",
+                 Kind => Diana.Library.Generic_Package_Unit);
+      Show_Resolution (Gen_Site, "Allocators");
+
+      --  the generic's body has "procedure Free is separate;" — a body stub
+      --  built into the now-loaded generic, completed by its separate subunit.
+      declare
+         Body_Of_Gen : constant Cursor := Lib.Require ("Allocators");  -- loaded
+         Free_Id     : constant Cursor := Lib.Add_Child
+           (Body_Of_Gen, Diana.Builders.Subprogram_Name
+                           (Spelling => SU.To_Unbounded_String ("Free")));
+         Stub_Node   : constant Cursor := Lib.Add_Child
+           (Body_Of_Gen, Diana.Builders.Stub);
+         Free_Body   : constant Cursor := Lib.Add_Child
+           (Body_Of_Gen, Diana.Builders.Subprogram_Body
+                           (Designator => Free_Id, Completion => Stub_Node));
+      begin
+         Lib.Reference (Name => "Allocators.Free", Site => Free_Body, Wanted => "Free");
+         Put_Line ("    'Allocators' body has: procedure Free is separate;");
+         Show_Body_Status (Free_Body, "Free");
+
+         Put_Line ("    attempting to run with subunit 'Allocators.Free' missing ...");
+         begin
+            Lib.Require_All_Resolved;
+            Put_Line ("    (unexpected) library reported fully resolved");
+         exception
+            when E : Diana.Library.Missing_Compilation =>
+               Put_Line ("    errored out as required: "
+                         & Ada.Exceptions.Exception_Message (E));
+         end;
+
+         Put_Line ("    merging subunit 'Allocators.Free' of the generic package ...");
+         Lib.Merge_Subunit (Name => "Allocators.Free", Parent => "Allocators");
+         Show_Body_Status (Free_Body, "Free");
+
+         Lib.Require_All_Resolved;
+         Put_Line ("    all separate compilations present — generic package and "
+                   & "its subunit body both resolved.");
+      end;
+   end;
 end Diana_Harness;
