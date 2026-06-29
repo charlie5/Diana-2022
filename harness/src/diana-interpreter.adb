@@ -59,6 +59,23 @@ package body Diana.Interpreter is
       Hash            => Ada.Strings.Hash,
       Equivalent_Keys => "=");
 
+   --  Predicate / Type_Invariant conditions keyed by the (sub)type name; the
+   --  type name is also the placeholder the condition uses for the value.
+   package Predicate_Maps is new Ada.Containers.Indefinite_Hashed_Maps
+     (Key_Type        => String,
+      Element_Type    => Node_List,
+      Hash            => Ada.Strings.Hash,
+      Equivalent_Keys => "=",
+      "="             => Node_Lists."=");
+
+   --  Which variables are declared with a predicated/invariant-bearing type,
+   --  mapping the variable name to that type name (so assignments re-check it).
+   package Constraint_Maps is new Ada.Containers.Indefinite_Hashed_Maps
+     (Key_Type        => String,
+      Element_Type    => String,
+      Hash            => Ada.Strings.Hash,
+      Equivalent_Keys => "=");
+
    Global_Scope : constant Positive := 1;
 
    --  In-flight control transfer.  At most one of Returning / Exiting / Jumping
@@ -70,6 +87,8 @@ package body Diana.Interpreter is
       Arrays       : Array_Store.Vector;             --  array values (1-based)
       Records      : Record_Store.Vector;            --  record values (1-based)
       Contracts    : Contract_Maps.Map;              --  Pre/Post by subprogram name
+      Predicates   : Predicate_Maps.Map;             --  predicate/invariant by type name
+      Constrained  : Constraint_Maps.Map;            --  variable name -> its type name
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
       Exiting      : Boolean      := False;          --  an exit is in progress
@@ -326,6 +345,53 @@ package body Diana.Interpreter is
       end if;
    end Register_Contracts;
 
+   --  Record the Predicate / Type_Invariant aspect conditions of a type or
+   --  subtype declaration's Properties under its name, for checking on every
+   --  assignment to a variable of that (sub)type.
+   procedure Register_Predicates (Env : in out Environment; Name : String;
+                                  Properties : Cursor)
+   is
+      Conditions : Node_List;
+   begin
+      if Properties = No_Element or else not Is_Semantic_Property_S (Properties) then
+         return;
+      end if;
+      for P of As_Semantic_Property_S (Properties).List loop
+         if Is_Semantic_Property (P) then
+            declare
+               Identity : constant Cursor := As_Semantic_Property (P).Identity;
+               Value    : constant Cursor := As_Semantic_Property (P).Value;
+            begin
+               if Value /= No_Element and then Is_Aspect_Expression (Value)
+                 and then (Is_Aspect_Predicate (Identity)
+                           or else Is_Aspect_Static_Predicate (Identity)
+                           or else Is_Aspect_Dynamic_Predicate (Identity)
+                           or else Is_Aspect_Type_Invariant (Identity))
+               then
+                  Conditions.Append (As_Aspect_Expression (Value).Value);
+               end if;
+            end;
+         end if;
+      end loop;
+      if not Conditions.Is_Empty then
+         Env.Predicates.Include (Name, Conditions);
+      end if;
+   end Register_Predicates;
+
+   --  The (sub)type name an object subtype indication denotes, or "".
+   function Subtype_Name_Of (Subtype_Spec : Cursor) return String is
+   begin
+      if Subtype_Spec = No_Element then
+         return "";
+      elsif Is_Constrained_Spec (Subtype_Spec) then
+         return Spelling_Of (Definition_Of (As_Constrained_Spec (Subtype_Spec).Mark));
+      elsif Is_Used_Name (Subtype_Spec) or else Is_Used_Object (Subtype_Spec) then
+         return Spelling_Of (Definition_Of (Subtype_Spec));
+      else
+         return "";
+      end if;
+   end Subtype_Name_Of;
+
    --  ---- evaluator / executor / caller (mutually recursive) -----------------
    function Evaluate (Expr : Cursor; Env : in out Environment; Current : Positive)
      return Static_Value;
@@ -333,19 +399,53 @@ package body Diana.Interpreter is
    function Invoke (Definition : Cursor; Actuals : Node_List;
                     Env : in out Environment; Current : Positive) return Static_Value;
 
+   --  Check a value against the predicate / invariant of Type_Name (the type
+   --  name is bound as the placeholder the condition tests).
+   procedure Check_Constraint (Env : in out Environment; Type_Name : String;
+                               Value : Static_Value; Context : Positive)
+   is
+   begin
+      if not Env.Predicates.Contains (Type_Name) then
+         return;
+      end if;
+      declare
+         Temp : constant Positive := Enter (Env, Context);
+      begin
+         Env.Scopes.Reference (Temp).Bindings.Include (Type_Name, Value);
+         for Condition of Env.Predicates.Element (Type_Name) loop
+            if not Bool_Of (Evaluate (Condition, Env, Temp)) then
+               Leave (Env, Temp);
+               raise Assertion_Error with
+                 "value violates the predicate/invariant of " & Type_Name;
+            end if;
+         end loop;
+         Leave (Env, Temp);
+      end;
+   end Check_Constraint;
+
    --  Elaborate a declarative part into Scope_Index: object declarations
-   --  (variables / constants) bind their initialised values, and nested
-   --  subprogram bodies register their name so calls close over this scope.
+   --  (variables / constants) bind their initialised values (re-checking any
+   --  predicate / invariant), subprogram bodies / declarations register for
+   --  static links and contracts, and type / subtype declarations register
+   --  their predicate or invariant.
    procedure Elaborate (Decls : Node_List; Env : in out Environment;
                         Scope_Index : Positive)
    is
-      procedure Declare_Objects (Names, Init : Cursor) is
+      procedure Declare_Objects (Names, Subtype_Spec, Init : Cursor) is
+         Type_Name : constant String := Subtype_Name_Of (Subtype_Spec);
+         Constrained : constant Boolean := Env.Predicates.Contains (Type_Name);
          Value : Static_Value := (Kind => No_Value);
       begin
          if Init /= No_Element and then not Is_Void (Init) then
             Value := Evaluate (Init, Env, Scope_Index);
          end if;
          for Nm of As_Defining_Name_S (Names).List loop
+            if Constrained then
+               Env.Constrained.Include (Spelling_Of (Nm), Type_Name);
+               if Init /= No_Element and then not Is_Void (Init) then
+                  Check_Constraint (Env, Type_Name, Value, Scope_Index);
+               end if;
+            end if;
             Define (Env, Scope_Index, Spelling_Of (Nm), Value);
          end loop;
       end Declare_Objects;
@@ -353,10 +453,18 @@ package body Diana.Interpreter is
       for D of Decls loop
          if Is_Variable_Declaration (D) then
             Declare_Objects (As_Variable_Declaration (D).Names,
+                             As_Variable_Declaration (D).Object_Subtype,
                              As_Variable_Declaration (D).Initialization);
          elsif Is_Constant_Declaration (D) then
             Declare_Objects (As_Constant_Declaration (D).Names,
+                             As_Constant_Declaration (D).Object_Subtype,
                              As_Constant_Declaration (D).Initialization);
+         elsif Is_Subtype_Declaration (D) then
+            Register_Predicates (Env, Spelling_Of (As_Subtype_Declaration (D).Name),
+                                 As_Subtype_Declaration (D).Properties);
+         elsif Is_Type_Declaration (D) then
+            Register_Predicates (Env, Spelling_Of (As_Type_Declaration (D).Name),
+                                 As_Type_Declaration (D).Properties);
          elsif Is_Subprogram_Body (D) then
             declare
                Designator : constant Cursor := As_Subprogram_Body (D).Designator;
@@ -1008,8 +1116,16 @@ package body Diana.Interpreter is
                   Env.Records.Reference (Rec.Fields).Include (Name, Copy (Env, Value));
                end;
 
-            else
-               Assign (Env, Current, Spelling_Of (Definition_Of (Target)), Value);
+            else                                      --  X := Value
+               declare
+                  Name : constant String := Spelling_Of (Definition_Of (Target));
+               begin
+                  Assign (Env, Current, Name, Value);
+                  if Env.Constrained.Contains (Name) then
+                     Check_Constraint
+                       (Env, Env.Constrained.Element (Name), Value, Current);
+                  end if;
+               end;
             end if;
          end;
 

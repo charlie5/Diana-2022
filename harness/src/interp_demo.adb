@@ -52,6 +52,7 @@ procedure Interp_Demo is
    Op_Gt    : constant Cursor := Add (B.Op_Greater);
    Op_Ge    : constant Cursor := Add (B.Op_Greater_Equal);
    Op_Eq    : constant Cursor := Add (B.Op_Equal);
+   Op_Mod   : constant Cursor := Add (B.Op_Modulo);
    Op_Cat   : constant Cursor := Add (B.Op_Concatenate);
    Sum_Def  : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sum")));
@@ -140,6 +141,17 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    Result_Def  : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Result")));
+   --  predicate / invariant demo: a subtype, a type, their variables, a field.
+   Even_Type    : constant Cursor :=
+     Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
+   V_Def        : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("V")));
+   Account_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Account")));
+   Acct_Def     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Acct")));
+   Balance      : constant Cursor :=
+     Add (B.Component_Name (Spelling => SU.To_Unbounded_String ("Balance")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -378,6 +390,36 @@ procedure Interp_Demo is
              (Designator => Designator,
               Properties => Add (B.Semantic_Property_S (List => NL (Aspects))))));
 
+   --  "with Dynamic_Predicate => C" / "with Type_Invariant => C" aspects.
+   function Predicate_Aspect (Condition : Cursor) return Cursor is
+     (Add (B.Semantic_Property
+             (Identity => Add (B.Aspect_Dynamic_Predicate),
+              Value    => Add (B.Aspect_Expression (Value => Condition)))));
+   function Invariant_Aspect (Condition : Cursor) return Cursor is
+     (Add (B.Semantic_Property
+             (Identity => Add (B.Aspect_Type_Invariant),
+              Value    => Add (B.Aspect_Expression (Value => Condition)))));
+
+   --  "subtype Name is ... with <aspects>" and "type Name is ... with <aspects>".
+   function Subtype_Decl (Name_Def : Cursor; Aspects : Cursor_Array) return Cursor is
+     (Add (B.Subtype_Declaration
+             (Name       => Name_Def,
+              Properties => Add (B.Semantic_Property_S (List => NL (Aspects))))));
+   function Type_Decl (Name_Def, Definition : Cursor; Aspects : Cursor_Array)
+     return Cursor is
+     (Add (B.Type_Declaration
+             (Name       => Name_Def,
+              Definition => Definition,
+              Properties => Add (B.Semantic_Property_S (List => NL (Aspects))))));
+
+   --  "Var_Def : Type_Name_Def := Init;" -- an object of a named (sub)type.
+   function Typed_Var (Var_Def, Type_Name_Def, Init : Cursor) return Cursor is
+     (Add (B.Variable_Declaration
+             (Names          => Add (B.Defining_Name_S (List => NL ([Var_Def]))),
+              Object_Subtype => Add (B.Constrained_Spec
+                (Mark => Add (B.Used_Name (Definition => Type_Name_Def)))),
+              Initialization => Init)));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -592,6 +634,32 @@ procedure Interp_Demo is
    Contract_Program : constant Cursor :=
      Block_Stmt ([Double_Decl], [Print (Sub_Call (Double_Name, [Lit (5)]))]);
 
+   --  subtype Even is Integer with Dynamic_Predicate => Even mod 2 = 0;
+   --  V : Even := 4; Put_Line (V); V := 6; Put_Line (V);            -- 4, 6
+   Even_Predicate : constant Cursor :=
+     Predicate_Aspect (Bin (Op_Eq, Bin (Op_Mod, Ref (Even_Type), Lit (2)), Lit (0)));
+   Predicate_Program : constant Cursor :=
+     Block_Stmt
+       ([Subtype_Decl (Even_Type, [Even_Predicate]),
+         Typed_Var (V_Def, Even_Type, Lit (4))],
+        [Print (Ref (V_Def)),
+         Assign (V_Def, Lit (6)),
+         Print (Ref (V_Def))]);
+
+   --  type Account is record Balance : Integer; end record
+   --     with Type_Invariant => Account.Balance >= 0;
+   --  Acct : Account := (Balance => 5); Put_Line (Acct.Balance);
+   --  Acct := (Balance => 10); Put_Line (Acct.Balance);            -- 5, 10
+   Account_Invariant : constant Cursor :=
+     Invariant_Aspect (Bin (Op_Ge, Field_Of (Ref (Account_Type), Balance), Lit (0)));
+   Invariant_Program : constant Cursor :=
+     Block_Stmt
+       ([Type_Decl (Account_Type, Add (B.Record_Type), [Account_Invariant]),
+         Typed_Var (Acct_Def, Account_Type, Rec ([Field_Assoc (Balance, Lit (5))]))],
+        [Print (Field_Of (Ref (Acct_Def), Balance)),
+         Assign (Acct_Def, Rec ([Field_Assoc (Balance, Lit (10))])),
+         Print (Field_Of (Ref (Acct_Def), Balance))]);
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -752,6 +820,19 @@ begin
    Diana.Interpreter.Run (Assert_Program);
    Diana.Interpreter.Run (Contract_Program);
 
+   --  Subtype predicates and type invariants, checked on declaration/assignment.
+   New_Line;
+   Put_Line ("Executing (subtype predicate + type invariant):");
+   Put_Line ("    subtype Even is Integer with Dynamic_Predicate => Even mod 2 = 0;");
+   Put_Line ("    V : Even := 4; Put_Line (V); V := 6; Put_Line (V);");
+   Put_Line ("    type Account is record ... with Type_Invariant => Account.Balance >= 0;");
+   Put_Line ("    Acct := (Balance => 5); Put_Line (Acct.Balance);");
+   Put_Line ("    Acct := (Balance => 10); Put_Line (Acct.Balance);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Predicate_Program);
+   Diana.Interpreter.Run (Invariant_Program);
+
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
    New_Line;
@@ -788,5 +869,27 @@ begin
    exception
       when E : Diana.Interpreter.Assertion_Error =>
          Put_Line ("    'Double (-1)'           -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- V := 3: predicate fails
+        (Block_Stmt
+           ([Subtype_Decl (Even_Type, [Even_Predicate]),
+             Typed_Var (V_Def, Even_Type, Lit (4))],
+            [Assign (V_Def, Lit (3))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Assertion_Error =>
+         Put_Line ("    'V := 3' (odd)          -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- Balance := -1: invariant fails
+        (Block_Stmt
+           ([Type_Decl (Account_Type, Add (B.Record_Type), [Account_Invariant]),
+             Typed_Var (Acct_Def, Account_Type, Rec ([Field_Assoc (Balance, Lit (5))]))],
+            [Assign (Acct_Def, Rec ([Field_Assoc (Balance, Lit (-1))]))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Assertion_Error =>
+         Put_Line ("    'Acct.Balance = -1'     -> " & Ada.Exceptions.Exception_Message (E));
    end;
 end Interp_Demo;
