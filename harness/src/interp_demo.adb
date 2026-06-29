@@ -49,6 +49,7 @@ procedure Interp_Demo is
    Op_Mul   : constant Cursor := Add (B.Op_Multiply);
    Op_Le    : constant Cursor := Add (B.Op_Less_Equal);
    Op_Lt    : constant Cursor := Add (B.Op_Less);
+   Op_Gt    : constant Cursor := Add (B.Op_Greater);
    Op_Eq    : constant Cursor := Add (B.Op_Equal);
    Op_Cat   : constant Cursor := Add (B.Op_Concatenate);
    Sum_Def  : constant Cursor :=
@@ -126,6 +127,11 @@ procedure Interp_Demo is
      Add (B.Component_Name (Spelling => SU.To_Unbounded_String ("X")));
    Y_Field : constant Cursor :=
      Add (B.Component_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   --  "for ... of" demo: the element loop parameter and a filtered accumulator.
+   E_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("E")));
+   Big_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Big")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -227,6 +233,16 @@ procedure Interp_Demo is
                  Discrete_Range => Add (B.Range_Bounds (Lower => Lit (Low),
                                                         Upper => Lit (High))),
                  Reverse_Order  => Backward)))),
+              Statements => Body_Seq)));
+
+   --  "for Param_Def of Iterable [when Filter] loop Body_Seq end loop".
+   function For_Of (Param_Def, Iterable, Body_Seq : Cursor;
+                    Filter : Cursor := No_Element) return Cursor is
+     (Add (B.Loop_Statement
+             (Iteration => Add (B.For_Loop (Iterator => Add (B.Container_Iterator
+                (Parameter => Param_Def,
+                 Iterable  => Iterable,
+                 Filter    => Filter)))),
               Statements => Body_Seq)));
 
    --  Case choices and alternatives.
@@ -505,6 +521,23 @@ procedure Interp_Demo is
            Print (Field_Of (Ref (Rec_Def), X_Field)),                      -- 1
            Print (Field_Of (Ref (Rec_Def), Y_Field))]);                    -- 5
 
+   --  Arr := (3, 5, 7, 9);
+   --  Total := 0; for E of Arr loop Total := Total + E; end loop;        -- 24
+   --  Big := 0; for E of Arr when E > 4 loop Big := Big + E; end loop;   -- 21
+   Iterate_Program : constant Cursor :=
+     Seq ([Assign (Arr_Def, Arr ([Lit (3), Lit (5), Lit (7), Lit (9)])),
+           Assign (Total_Def, Lit (0)),
+           For_Of (E_Def, Ref (Arr_Def),
+                   Seq ([Assign (Total_Def,
+                                 Bin (Op_Plus, Ref (Total_Def), Ref (E_Def)))])),
+           Print (Ref (Total_Def)),                                        -- 24
+           Assign (Big_Def, Lit (0)),
+           For_Of (E_Def, Ref (Arr_Def),
+                   Seq ([Assign (Big_Def,
+                                 Bin (Op_Plus, Ref (Big_Def), Ref (E_Def)))]),
+                   Filter => Bin (Op_Gt, Ref (E_Def), Lit (4))),
+           Print (Ref (Big_Def))]);                                        -- 21
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -641,6 +674,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Aggregate_Program);
+
+   --  Container 'for ... of' iteration over an array, with an Ada 2022 filter.
+   New_Line;
+   Put_Line ("Executing (container for ... of):");
+   Put_Line ("    Arr := (3, 5, 7, 9);");
+   Put_Line ("    Total := 0; for E of Arr loop Total := Total + E; end loop;");
+   Put_Line ("    Big := 0; for E of Arr when E > 4 loop Big := Big + E; end loop;");
+   Put_Line ("    Put_Line (Total); Put_Line (Big);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Iterate_Program);
 
    --  The execute-or-error requirement: an unbound variable and a null
    --  dereference must both fail rather than produce a wrong answer.

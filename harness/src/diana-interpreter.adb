@@ -988,56 +988,104 @@ package body Diana.Interpreter is
                declare
                   Iter : constant Cursor := As_For_Loop (Iteration).Iterator;
                begin
-                  if not Is_Range_Iterator (Iter) then
-                     raise Interpretation_Error with
-                       "only range-based for loops are supported";
-                  end if;
-                  declare
-                     Parameter : constant String :=
-                       Spelling_Of (As_Range_Iterator (Iter).Parameter);
-                     Filter    : constant Cursor := As_Range_Iterator (Iter).Filter;
-                     Backward  : constant Boolean :=
-                       As_Range_Iterator (Iter).Reverse_Order;
-                     Scope     : constant Positive := Enter (Env, Current);
-                     Low, High : Long_Long_Integer;
+                  if Is_Range_Iterator (Iter) then        --  for I in Low .. High
+                     declare
+                        Parameter : constant String :=
+                          Spelling_Of (As_Range_Iterator (Iter).Parameter);
+                        Filter    : constant Cursor := As_Range_Iterator (Iter).Filter;
+                        Backward  : constant Boolean :=
+                          As_Range_Iterator (Iter).Reverse_Order;
+                        Scope     : constant Positive := Enter (Env, Current);
+                        Low, High : Long_Long_Integer;
 
-                     --  one iteration with the loop parameter set to V; the
-                     --  Ada 2022 "when" filter (if any) can skip the body
-                     procedure Iterate (V : Long_Long_Integer) is
+                        --  one iteration with the loop parameter set to V; the
+                        --  Ada 2022 "when" filter (if any) can skip the body
+                        procedure Iterate (V : Long_Long_Integer) is
+                        begin
+                           Define (Env, Scope, Parameter, Int (V));
+                           if Filter = No_Element or else Is_Void (Filter)
+                             or else Bool_Of (Evaluate (Filter, Env, Scope))
+                           then
+                              Execute (Statements, Env, Scope);
+                           end if;
+                        end Iterate;
                      begin
-                        Define (Env, Scope, Parameter, Int (V));
-                        if Filter = No_Element or else Is_Void (Filter)
-                          or else Bool_Of (Evaluate (Filter, Env, Scope))
-                        then
-                           Execute (Statements, Env, Scope);
+                        Eval_Range (As_Range_Iterator (Iter).Discrete_Range,
+                                    Env, Current, Low, High);
+                        if not Backward then
+                           declare
+                              V : Long_Long_Integer := Low;
+                           begin
+                              while V <= High and then not Pending (Env) loop
+                                 Iterate (V);
+                                 exit when V = High;   --  guard type'Last overflow
+                                 V := V + 1;
+                              end loop;
+                           end;
+                        else
+                           declare
+                              V : Long_Long_Integer := High;
+                           begin
+                              while V >= Low and then not Pending (Env) loop
+                                 Iterate (V);
+                                 exit when V = Low;
+                                 V := V - 1;
+                              end loop;
+                           end;
                         end if;
-                     end Iterate;
-                  begin
-                     Eval_Range (As_Range_Iterator (Iter).Discrete_Range,
-                                 Env, Current, Low, High);
-                     if not Backward then
-                        declare
-                           V : Long_Long_Integer := Low;
+                        Leave (Env, Scope);
+                     end;
+
+                  elsif Is_Container_Iterator (Iter) then  --  for E of array
+                     declare
+                        Parameter : constant String :=
+                          Spelling_Of (As_Container_Iterator (Iter).Parameter);
+                        Filter    : constant Cursor := As_Container_Iterator (Iter).Filter;
+                        Backward  : constant Boolean :=
+                          As_Container_Iterator (Iter).Reverse_Order;
+                        Iterable  : constant Static_Value :=
+                          Evaluate (As_Container_Iterator (Iter).Iterable, Env, Current);
+                        Scope     : constant Positive := Enter (Env, Current);
+
+                        --  one iteration with the loop parameter bound to element E
+                        procedure Iterate (E : Static_Value) is
                         begin
-                           while V <= High and then not Pending (Env) loop
-                              Iterate (V);
-                              exit when V = High;   --  guard type'Last overflow
-                              V := V + 1;
-                           end loop;
-                        end;
-                     else
+                           Define (Env, Scope, Parameter, E);
+                           if Filter = No_Element or else Is_Void (Filter)
+                             or else Bool_Of (Evaluate (Filter, Env, Scope))
+                           then
+                              Execute (Statements, Env, Scope);
+                           end if;
+                        end Iterate;
+                     begin
+                        if Iterable.Kind /= Array_Value then
+                           Leave (Env, Scope);
+                           raise Interpretation_Error with
+                             "'for ... of' requires an array value";
+                        end if;
                         declare
-                           V : Long_Long_Integer := High;
+                           --  iterate a snapshot of the elements at loop entry
+                           Elements : constant Value_Vectors.Vector :=
+                             Env.Arrays (Iterable.Elements);
                         begin
-                           while V >= Low and then not Pending (Env) loop
-                              Iterate (V);
-                              exit when V = Low;
-                              V := V - 1;
-                           end loop;
+                           if not Backward then
+                              for I in 1 .. Natural (Elements.Length) loop
+                                 exit when Pending (Env);
+                                 Iterate (Elements (I));
+                              end loop;
+                           else
+                              for I in reverse 1 .. Natural (Elements.Length) loop
+                                 exit when Pending (Env);
+                                 Iterate (Elements (I));
+                              end loop;
+                           end if;
                         end;
-                     end if;
-                     Leave (Env, Scope);
-                  end;
+                        Leave (Env, Scope);
+                     end;
+
+                  else
+                     raise Interpretation_Error with "unsupported iterator form";
+                  end if;
                end;
 
             else
