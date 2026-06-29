@@ -981,26 +981,56 @@ package body Diana.Interpreter is
       --  instance): a formal object binds to the actual's value; a formal
       --  subprogram binds (in Formal_Subs) to the actual subprogram, so calls
       --  to the formal inside the template dispatch to it.  Evaluated/resolved
-      --  in the caller's scope.
-      if Natural (Gen_Formal_Nodes.Length) /= Natural (Gen_Actuals.Length) then
+      --  in the caller's scope.  Actuals are positional; a formal beyond the
+      --  supplied actuals falls back to its DEFAULT (object: a Default
+      --  expression; subprogram: a Default_Name), else it is a missing actual.
+      if Natural (Gen_Actuals.Length) > Natural (Gen_Formal_Nodes.Length) then
          Leave (Env, Call);
-         raise Interpretation_Error with "wrong number of generic actuals in " & Name;
+         raise Interpretation_Error with "too many generic actuals in " & Name;
       end if;
       for I in 1 .. Natural (Gen_Formal_Nodes.Length) loop
          declare
-            F : constant Cursor := Gen_Formal_Nodes (I);
-            A : constant Cursor := Gen_Actuals (I);
+            F          : constant Cursor := Gen_Formal_Nodes (I);
+            Has_Actual : constant Boolean := I <= Natural (Gen_Actuals.Length);
+            A          : constant Cursor :=
+              (if Has_Actual then Gen_Actuals (I) else No_Element);
          begin
             if Is_Generic_Formal_Object (F) then
-               Define (Env, Call,
-                       Spelling_Of (As_Defining_Name_S
-                         (As_Generic_Formal_Object (F).Names).List.First_Element),
-                       Evaluate (A, Env, Current));
+               declare
+                  Value_Expr : constant Cursor :=
+                    (if Has_Actual then A
+                     else As_Generic_Formal_Object (F).Default);
+               begin
+                  if Value_Expr = No_Element or else Is_Void (Value_Expr) then
+                     Leave (Env, Call);
+                     raise Interpretation_Error with
+                       "missing generic actual (no default) in " & Name;
+                  end if;
+                  Define (Env, Call,
+                          Spelling_Of (As_Defining_Name_S
+                            (As_Generic_Formal_Object (F).Names).List.First_Element),
+                          Evaluate (Value_Expr, Env, Current));
+               end;
             elsif Is_Generic_Formal_Subprogram (F) then
-               Env.Scopes.Reference (Call).Formal_Subs.Include
-                 (Spelling_Of (As_Subprogram_Declaration
-                    (As_Generic_Formal_Subprogram (F).Specification).Designator),
-                  Definition_Of (A));
+               declare
+                  Default : constant Cursor :=
+                    As_Generic_Formal_Subprogram (F).Default;
+                  Actual_Sub : Cursor;
+               begin
+                  if Has_Actual then
+                     Actual_Sub := Definition_Of (A);
+                  elsif Is_Default_Name (Default) then
+                     Actual_Sub := Definition_Of (As_Default_Name (Default).Subprogram);
+                  else
+                     Leave (Env, Call);
+                     raise Interpretation_Error with
+                       "missing generic subprogram actual (no default) in " & Name;
+                  end if;
+                  Env.Scopes.Reference (Call).Formal_Subs.Include
+                    (Spelling_Of (As_Subprogram_Declaration
+                       (As_Generic_Formal_Subprogram (F).Specification).Designator),
+                     Actual_Sub);
+               end;
             elsif Is_Generic_Formal_Type_Declaration (F) then
                null;  --  a formal type is erased at runtime (values are
                       --  dynamically typed); the actual type name binds nothing,
@@ -1009,6 +1039,11 @@ package body Diana.Interpreter is
                --  a formal package binds to the actual instance's value (a
                --  Package_Value), so "P.Member" inside the template resolves
                --  through the actual instance's scope.
+               if not Has_Actual then
+                  Leave (Env, Call);
+                  raise Interpretation_Error with
+                    "missing generic package actual in " & Name;
+               end if;
                Define (Env, Call,
                        Spelling_Of (As_Generic_Formal_Package (F).Name),
                        Evaluate (A, Env, Current));

@@ -264,6 +264,23 @@ procedure Interp_Demo is
      Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("S")));
    STG_X    : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   --  default-generic-formal demo: Bump's formal object "Increment" (default 1)
+   --  + its parameter; Reduce's formal subprogram "Combine" (default Plus) + its
+   --  parameters; and Reduce's own two parameters.
+   Bump_Inc   : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Increment")));
+   Bump_X     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Combine_Def : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Combine")));
+   Combine_X  : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Combine_Y  : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   Reduce_A   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   Reduce_B   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -465,6 +482,20 @@ procedure Interp_Demo is
              (Name     => Name_Def,
               Template => Add (B.Used_Name (Definition => Template_Def)),
               Is_Box   => True)));
+   --  a "Name : Integer := Default;" generic formal object with a default, and a
+   --  "with function ... is Default_Sub;" formal subprogram with a default name.
+   function Generic_Object_Default (Name_Def, Default_Expr : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Object
+             (Names   => Add (B.Defining_Name_S (List => NL ([Name_Def]))),
+              Mode    => Add (B.Generic_In),
+              Default => Default_Expr)));
+   function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
+     return Cursor is
+     (Add (B.Generic_Formal_Subprogram
+             (Specification => Add (B.Subprogram_Declaration
+                (Designator => Designator, Header => Header)),
+              Default       => Add (B.Default_Name
+                (Subprogram => Add (B.Used_Name (Definition => Default_Sub)))))));
    function Instance_Of (Generic_Def : Cursor; Actuals : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -1366,6 +1397,62 @@ procedure Interp_Demo is
        ([Pkg_Instance (By_3_Def, Scaler, [Lit (3)])],
         [Print (Sub_Call (ST3, [Lit (5)]))]);
 
+   --  generic
+   --     Increment : Integer := 1;        -- a formal object with a default
+   --  function Bump (X : Integer) return Integer is begin return X + Increment; end;
+   Bump : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Bump"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Object_Default (Bump_Inc, Lit (1))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (Bump_X)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus, Ref (Bump_X),
+                                                  Ref (Bump_Inc)))])));
+   --  function Inc  is new Bump;       -- omitted actual -> Increment defaults to 1
+   --  function Add5 is new Bump (5);   -- explicit actual -> Increment = 5
+   Inc  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling   => SU.To_Unbounded_String ("Inc"),
+                             Completion => Instance_Of (Bump, [])));
+   Add5 : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling   => SU.To_Unbounded_String ("Add5"),
+                             Completion => Instance_Of (Bump, [Lit (5)])));
+
+   --  generic
+   --     with function Combine (X, Y : Integer) return Integer is Plus;  -- default
+   --  function Reduce (A, B : Integer) return Integer is
+   --  begin return Combine (A, B); end;
+   Reduce : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Reduce"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Sub_Default (Combine_Def,
+                   Func_Spec ([In_Par (Combine_X), In_Par (Combine_Y)]),
+                   Plus_Def)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (Reduce_A), In_Par (Reduce_B)]))),
+             Completion    => Blk ([], [Ret (Sub_Call (Combine_Def,
+               [Ref (Reduce_A), Ref (Reduce_B)]))])));
+   --  function Default_Reduce is new Reduce;          -- Combine defaults to Plus
+   --  function Times_Reduce   is new Reduce (Times);  -- explicit Times
+   Default_Reduce : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Default_Reduce"),
+             Completion => Instance_Of (Reduce, [])));
+   Times_Reduce : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Times_Reduce"),
+             Completion => Instance_Of (Reduce,
+               [Add (B.Used_Name (Definition => Times_Def))])));
+
+   --  Put_Line (Inc (10)); Put_Line (Add5 (10));               -- 11, 15
+   --  Put_Line (Default_Reduce (6, 7)); Put_Line (Times_Reduce (6, 7));  -- 13, 42
+   Default_Formals_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Inc,  [Lit (10)])),
+           Print (Sub_Call (Add5, [Lit (10)])),
+           Print (Sub_Call (Default_Reduce, [Lit (6), Lit (7)])),
+           Print (Sub_Call (Times_Reduce,   [Lit (6), Lit (7)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1762,6 +1849,23 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Formal_Pkg_Program);
+
+   --  Default generic formals: a formal object with a default value and a formal
+   --  subprogram with a default name; an instantiation that omits the actual
+   --  uses the default, one that supplies it overrides.
+   New_Line;
+   Put_Line ("Executing (default generic formals):");
+   Put_Line ("    generic Increment : Integer := 1;");
+   Put_Line ("    function Bump (X : Integer) return Integer is begin return X + Increment; end;");
+   Put_Line ("    function Inc is new Bump;  function Add5 is new Bump (5);");
+   Put_Line ("    generic with function Combine (X, Y : Integer) return Integer is Plus;");
+   Put_Line ("    function Reduce (A, B : Integer) return Integer is begin return Combine (A, B); end;");
+   Put_Line ("    function Default_Reduce is new Reduce;  function Times_Reduce is new Reduce (Times);");
+   Put_Line ("    Put_Line (Inc (10)); Put_Line (Add5 (10));");
+   Put_Line ("    Put_Line (Default_Reduce (6, 7)); Put_Line (Times_Reduce (6, 7));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Default_Formals_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
