@@ -199,6 +199,19 @@ procedure Interp_Demo is
      Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("By_2")));
    By_3_Def   : constant Cursor :=
      Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("By_3")));
+   --  child-generic-package demo: the child's own generic formal "Bonus", two
+   --  member functions, a parameter, and the child instance name.  (The child
+   --  template "Scaler.Extras" itself is built below, near the other generics.)
+   Bonus_Def         : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Bonus")));
+   Boosted_Base_Def  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Boosted_Base")));
+   Scale_Twice_Def   : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Scale_Twice")));
+   ST_V              : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("V")));
+   By_2_Extras_Def   : constant Cursor :=
+     Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("By_2_Extras")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -408,6 +421,29 @@ procedure Interp_Demo is
      (Add (B.Package_Declaration
              (Name       => Name_Def,
               Completion => Instance_Of (Generic_Def, Actuals))));
+
+   --  "package Name is new Parent_Instance.Child (Actuals);" — a generic child
+   --  unit: the generic name is a selected component "Parent.Child".
+   function Child_Instance_Of (Parent_Def, Child_Generic_Def : Cursor;
+                               Actuals : Cursor_Array) return Cursor is
+      Items : Node_List;
+   begin
+      for A of Actuals loop
+         Items.Append (Add (B.Positional_Association (Value => A)));
+      end loop;
+      return Add (B.Unit_Instantiation (Instance => Add (B.Generic_Instantiation
+        (Generic_Unit => Add (B.Selected_Component
+           (Prefix   => Add (B.Used_Name (Definition => Parent_Def)),
+            Selector => Add (B.Used_Name (Definition => Child_Generic_Def)))),
+         Associations => Add (B.Association_S (List => Items))))));
+   end Child_Instance_Of;
+   function Child_Pkg_Instance
+     (Name_Def, Parent_Def, Child_Generic_Def : Cursor; Actuals : Cursor_Array)
+     return Cursor is
+     (Add (B.Package_Declaration
+             (Name       => Name_Def,
+              Completion => Child_Instance_Of (Parent_Def, Child_Generic_Def,
+                                               Actuals))));
 
    --  package-instance members: "Pkg.Member" and "Pkg.Sub (Args)".
    function Member (Pkg_Def, Member_Def : Cursor) return Cursor is
@@ -1126,6 +1162,41 @@ procedure Interp_Demo is
          Print (Member_Call (By_2_Def, Scale_Def, [Lit (5)])),
          Print (Member_Call (By_3_Def, Scale_Def, [Lit (5)]))]);
 
+   --  A generic CHILD package of Scaler.  Its members reference the parent's
+   --  Base / Scale by simple name (a child sees the parent's visible part) and
+   --  it has its own generic formal Bonus.
+   --  generic
+   --     Bonus : Integer;
+   --  package Scaler.Extras is
+   --     function Boosted_Base return Integer;            -- = Base + Bonus
+   --     function Scale_Twice (V : Integer) return Integer; -- = Scale (Scale (V))
+   --  end Scaler.Extras;
+   Scaler_Extras : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Extras"),
+             Formals       => Add (B.Generic_Formal_S
+               (List => NL ([Generic_Object (Bonus_Def)]))),
+             Specification => Add (B.Package_Specification
+               (Visible_Declarations => Add (B.Declaration_S (List => NL
+                 ([Sub_Decl (Boosted_Base_Def, []),
+                   Sub_Decl (Scale_Twice_Def, [])])))))));
+
+   --  declare
+   --     package By_2        is new Scaler (2);
+   --     package By_2_Extras is new By_2.Extras (100);   -- child of an instance
+   --  begin
+   --     Put_Line (By_2.Base);                     -- 20
+   --     Put_Line (By_2_Extras.Boosted_Base);      -- 120 = parent Base 20 + Bonus 100
+   --     Put_Line (By_2_Extras.Scale_Twice (5));   -- 20  = Scale (Scale (5))
+   --  end;
+   Child_Program : constant Cursor :=
+     Block_Stmt
+       ([Pkg_Instance (By_2_Def, Scaler, [Lit (2)]),
+         Child_Pkg_Instance (By_2_Extras_Def, By_2_Def, Scaler_Extras, [Lit (100)])],
+        [Print (Member (By_2_Def, Base_Def)),
+         Print (Member_Call (By_2_Extras_Def, Boosted_Base_Def, [])),
+         Print (Member_Call (By_2_Extras_Def, Scale_Twice_Def, [Lit (5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1436,6 +1507,29 @@ begin
    Complete (Scale_Def, Func_Spec ([In_Par (Scale_X)]),
              Blk ([], [Ret (Bin (Op_Mul, Ref (Scale_X), Ref (Factor_Def)))]));
    Diana.Interpreter.Run (Package_Program);
+
+   --  Child generic packages: a generic child of Scaler whose members see the
+   --  parent instance's Base / Scale, plus its own generic formal Bonus.
+   New_Line;
+   Put_Line ("Executing (child generic packages):");
+   Put_Line ("    generic Bonus : Integer; package Scaler.Extras is  -- a child unit");
+   Put_Line ("       function Boosted_Base return Integer;             -- = Base + Bonus");
+   Put_Line ("       function Scale_Twice (V : Integer) return Integer; -- = Scale (Scale (V))");
+   Put_Line ("    end Scaler.Extras;");
+   Put_Line ("    declare package By_2 is new Scaler (2);");
+   Put_Line ("            package By_2_Extras is new By_2.Extras (100);");
+   Put_Line ("    begin Put_Line (By_2.Base);                  -- 20");
+   Put_Line ("          Put_Line (By_2_Extras.Boosted_Base);   -- 120 = Base 20 + Bonus 100");
+   Put_Line ("          Put_Line (By_2_Extras.Scale_Twice (5)); end;  -- 20 = Scale (Scale (5))");
+   New_Line;
+   Put_Line ("Output:");
+   --  complete the child's member functions before instantiation
+   Complete (Boosted_Base_Def, Func_Spec ([]),
+             Blk ([], [Ret (Bin (Op_Plus, Ref (Base_Def), Ref (Bonus_Def)))]));
+   Complete (Scale_Twice_Def, Func_Spec ([In_Par (ST_V)]),
+             Blk ([], [Ret (Sub_Call (Scale_Def,
+                              [Sub_Call (Scale_Def, [Ref (ST_V)])]))]));
+   Diana.Interpreter.Run (Child_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

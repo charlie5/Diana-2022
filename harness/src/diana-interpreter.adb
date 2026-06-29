@@ -555,22 +555,46 @@ package body Diana.Interpreter is
       end loop;
    end Elaborate;
 
-   --  Instantiate a generic package: create the instance's scope (parented to
-   --  the scope where it is declared, so members see the enclosing names), bind
-   --  the generic formal objects to the actuals, elaborate the template's
-   --  visible declarations into that scope, and bind the instance name to a
+   --  Instantiate a generic package: create the instance's scope, bind the
+   --  generic formal objects to the actuals, elaborate the template's visible
+   --  declarations into that scope, and bind the instance name to a
    --  Package_Value handle so "I.Member" / "I.Sub (...)" resolve through it.
+   --
+   --  The instance scope nests in its "home" scope: normally the scope where the
+   --  instantiation is written (so it sees the enclosing names), but for a child
+   --  unit ("package C is new Parent_Instance.Child (...)", a selected generic
+   --  name) the parent instance's scope — so the child's declarations see the
+   --  parent's members by simple name, just as a real child unit does.
    procedure Instantiate_Package (Name, Completion : Cursor;
                                   Env : in out Environment; Scope_Index : Positive)
    is
-      Inst     : constant Cursor := As_Unit_Instantiation (Completion).Instance;
-      Template : constant Cursor :=
-        Definition_Of (As_Generic_Instantiation (Inst).Generic_Unit);
-      Gen_Spec : constant Cursor := As_Generic_Name (Template).Specification;
-      Formals  : Node_List;       --  generic formal-object names
-      Actuals  : Node_List;       --  the instantiation's actual expressions
+      Inst         : constant Cursor := As_Unit_Instantiation (Completion).Instance;
+      Generic_Unit : constant Cursor := As_Generic_Instantiation (Inst).Generic_Unit;
+      Template     : Cursor;
+      Home_Scope   : Positive := Scope_Index;  --  scope the instance nests in
+      Gen_Spec     : Cursor;
+      Formals      : Node_List;   --  generic formal-object names
+      Actuals      : Node_List;   --  the instantiation's actual expressions
       Instance_Scope : Positive;
    begin
+      if Is_Selected_Component (Generic_Unit) then     --  a generic child unit
+         declare
+            Parent_Pkg : constant Static_Value :=
+              Evaluate (As_Selected_Component (Generic_Unit).Prefix,
+                        Env, Scope_Index);
+         begin
+            if Parent_Pkg.Kind /= Package_Value then
+               raise Interpretation_Error with
+                 "parent of a child instantiation is not a package";
+            end if;
+            Home_Scope := Parent_Pkg.Instance;
+            Template := Definition_Of (As_Selected_Component (Generic_Unit).Selector);
+         end;
+      else
+         Template := Definition_Of (Generic_Unit);
+      end if;
+      Gen_Spec := As_Generic_Name (Template).Specification;
+
       if not Is_Package_Specification (Gen_Spec) then
          raise Interpretation_Error with
            "instantiating a non-package generic as a package";
@@ -598,8 +622,9 @@ package body Diana.Interpreter is
          raise Interpretation_Error with "wrong number of generic actuals";
       end if;
 
-      --  the instance scope sees the enclosing names (a nested instantiation)
-      Instance_Scope := Enter (Env, Scope_Index);
+      --  the instance scope nests in its home (enclosing scope, or the parent
+      --  instance for a child); actuals are evaluated where the instance is written
+      Instance_Scope := Enter (Env, Home_Scope);
       for I in 1 .. Natural (Formals.Length) loop
          Define (Env, Instance_Scope, Spelling_Of (Formals (I)),
                  Evaluate (Actuals (I), Env, Scope_Index));

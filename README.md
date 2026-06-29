@@ -114,7 +114,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   runs `G`'s body with its generic formal objects bound to the instance's actuals
   — and generic packages: `package I is new G (Actuals)` elaborates `G`'s visible
   declarations into a fresh instance scope (nestable in a block), with `I.Member`
-  and `I.Sub (...)` resolving through it.
+  and `I.Sub (...)` resolving through it; and child generic packages
+  (`package C is new I.Child (Actuals)`), whose instance nests in the parent
+  instance's scope so the child sees the parent's members by simple name.
 - **Scoping:** a lexical scope chain; locals shadow outer names.
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,
