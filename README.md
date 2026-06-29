@@ -115,7 +115,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   **objects** to values, formal **subprograms** to actual subprograms that calls in
   the template dispatch to, formal **types** erased — one body runs over each
   actual type, e.g. `Are_Equal` instantiated for `Integer` and `String`, including
-  formal **interface** types (programmed to via their operations) — and
+  formal **interface** types (programmed to via their operations) and formal
+  **derived** types (whose inherited parent operations the body uses directly) — and
   formal **packages** bound to an actual instance, so `P.Member` resolves through
   it; with **defaults** for omitted object/subprogram formals and **`in out`**
   formal objects that alias an actual variable) — and generic packages:

@@ -308,6 +308,16 @@ procedure Interp_Demo is
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Circle_Area")));
    CiA_R      : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("R")));
+   --  derived-generic-formal-type demo: the formal type "Money" (derived from
+   --  Integer), Net's parameter, and two actual derived types "Dollars"/"Euros".
+   Money_Type   : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Money")));
+   Net_Gross    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Gross")));
+   Dollars_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Dollars")));
+   Euros_Type   : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Euros")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -527,6 +537,12 @@ procedure Interp_Demo is
              (Name       => Name_Def,
               Definition => Add (B.Formal_Interface_Type
                 (Kind => Add (B.Ordinary_Interface))))));
+   --  a "type Name is new Parent;" generic formal derived type.
+   function Generic_Derived_Formal (Name_Def, Parent_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Derived_Type
+                (Parent => Add (B.Used_Name (Definition => Parent_Def)))))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1554,6 +1570,40 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Total_Squares, [Lit (3), Lit (4)])),
            Print (Sub_Call (Total_Circles, [Lit (1), Lit (2)]))]);
 
+   --  generic
+   --     type Money is new Integer;       -- a derived type; inherits + - * etc.
+   --  function Net (Gross : Money) return Money is
+   --  begin return Gross * 2 - 10; end;   -- uses operations inherited from Integer
+   Net : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Net"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Derived_Formal (Money_Type, Integer_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (Net_Gross)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Minus,
+               Bin (Op_Mul, Ref (Net_Gross), Lit (2)), Lit (10)))])));
+
+   --  type Dollars is new Integer;  type Euros is new Integer;
+   --  function Net_Dollars is new Net (Dollars);
+   --  function Net_Euros   is new Net (Euros);
+   Net_Dollars : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Net_Dollars"),
+             Completion => Instance_Of (Net,
+               [Add (B.Used_Name (Definition => Dollars_Type))])));
+   Net_Euros : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Net_Euros"),
+             Completion => Instance_Of (Net,
+               [Add (B.Used_Name (Definition => Euros_Type))])));
+
+   --  Put_Line (Net_Dollars (100));  -- 100*2 - 10 = 190
+   --  Put_Line (Net_Euros (5));      -- 5*2 - 10 = 0
+   Derived_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Net_Dollars, [Lit (100)])),
+           Print (Sub_Call (Net_Euros,   [Lit (5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2001,6 +2051,22 @@ begin
              Blk ([], [Ret (Bin (Op_Mul, Lit (3), Bin (Op_Mul, Ref (CiA_R),
                                                        Ref (CiA_R))))]));
    Diana.Interpreter.Run (Interface_Formal_Program);
+
+   --  Formal derived types: a formal type derived from Integer inherits its
+   --  parent's operations, so the template uses them directly (no formal
+   --  subprogram needed); instantiated with two distinct derived types.
+   New_Line;
+   Put_Line ("Executing (formal derived types):");
+   Put_Line ("    generic type Money is new Integer;   -- inherits + - * etc.");
+   Put_Line ("    function Net (Gross : Money) return Money");
+   Put_Line ("       is begin return Gross * 2 - 10; end;");
+   Put_Line ("    type Dollars is new Integer; type Euros is new Integer;");
+   Put_Line ("    function Net_Dollars is new Net (Dollars);");
+   Put_Line ("    function Net_Euros   is new Net (Euros);");
+   Put_Line ("    Put_Line (Net_Dollars (100)); Put_Line (Net_Euros (5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Derived_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
