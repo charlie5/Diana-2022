@@ -373,4 +373,93 @@ begin
       Put_Line ("    all separate compilations present — "
                 & "child generic loaded beneath its generic parent.");
    end;
+   New_Line;
+
+   --  9. Separate compilation of a GRANDCHILD generic package.  'Client5'
+   --     instantiates 'Graphics.Drivers.Pool': a generic grandchild whose
+   --     ancestors 'Graphics' and 'Graphics.Drivers' are ordinary packages.
+   --     All three are separately compiled, forming a dependency chain
+   --     Graphics <- Graphics.Drivers <- Graphics.Drivers.Pool, and the
+   --     instantiation names the generic by a doubly-nested selected component
+   --     (A.B).C, so it carries three referrers — one per ancestor level — all
+   --     fixed up by merging the three units top-down.
+   Put_Line ("Separate compilation of a grandchild generic package:");
+   declare
+      Client5      : constant Cursor := Lib.Add_Compilation ("Client5");
+      G_Stub       : constant Cursor := Lib.Require ("Graphics");
+      D_Stub       : constant Cursor := Lib.Require ("Graphics.Drivers");
+      P_Stub       : constant Cursor := Lib.Require ("Graphics.Drivers.Pool");
+      G_Ref        : constant Cursor := Lib.Add_Child
+        (Client5, Diana.Builders.Used_Name (Definition => G_Stub));
+      D_Ref        : constant Cursor := Lib.Add_Child
+        (Client5, Diana.Builders.Used_Name (Definition => D_Stub));
+      P_Ref        : constant Cursor := Lib.Add_Child
+        (Client5, Diana.Builders.Used_Name (Definition => P_Stub));
+      --  "Graphics.Drivers" then "(Graphics.Drivers).Pool"
+      Inner_Sel    : constant Cursor := Lib.Add_Child
+        (Client5, Diana.Builders.Selected_Component
+                    (Prefix => G_Ref, Selector => D_Ref));
+      Gen_Unit     : constant Cursor := Lib.Add_Child
+        (Client5, Diana.Builders.Selected_Component
+                    (Prefix => Inner_Sel, Selector => P_Ref));
+      --  "package My_Pool is new Graphics.Drivers.Pool;"
+      Inst         : constant Cursor := Lib.Add_Child
+        (Client5, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Unit));
+
+      function Outer return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+      function Inner return Cursor is
+        (Diana.Accessors.As_Selected_Component (Outer).Prefix);
+      function Graphics_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Inner).Prefix);
+      function Drivers_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Inner).Selector);
+      function Pool_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Outer).Selector);
+   begin
+      Lib.Reference (Name => "Graphics", Site => Graphics_Site,
+                     Wanted => "Graphics");
+      Lib.Reference (Name => "Graphics.Drivers", Site => Drivers_Site,
+                     Wanted => "Drivers");
+      Lib.Reference (Name => "Graphics.Drivers.Pool", Site => Pool_Site,
+                     Wanted => "Pool");
+      Put_Line ("    built 'Client5': package My_Pool is new Graphics.Drivers.Pool;");
+      Show_Resolution (Graphics_Site, "Graphics");
+      Show_Resolution (Drivers_Site, "Drivers");
+      Show_Resolution (Pool_Site, "Pool");
+
+      --  the grandchild needs its whole ancestor chain compiled first
+      Put_Line ("    merging grandchild 'Graphics.Drivers.Pool' before its "
+                & "ancestors ...");
+      begin
+         Lib.Merge (Name => "Graphics.Drivers.Pool", Declared => "Pool",
+                    Kind => Diana.Library.Generic_Package_Unit,
+                    Parent => "Graphics.Drivers");
+         Put_Line ("    (unexpected) grandchild merged without its parent");
+      exception
+         when E : Diana.Library.Missing_Compilation =>
+            Put_Line ("    errored out as required: "
+                      & Ada.Exceptions.Exception_Message (E));
+      end;
+
+      --  merge the chain top-down: Graphics, then Graphics.Drivers, then the
+      --  grandchild generic beneath it
+      Put_Line ("    merging 'Graphics', then 'Graphics.Drivers', then "
+                & "'Graphics.Drivers.Pool' ...");
+      Lib.Merge (Name => "Graphics", Declared => "Graphics",
+                 Kind => Diana.Library.Package_Unit);
+      Lib.Merge (Name => "Graphics.Drivers", Declared => "Drivers",
+                 Kind => Diana.Library.Package_Unit, Parent => "Graphics");
+      Lib.Merge (Name => "Graphics.Drivers.Pool", Declared => "Pool",
+                 Kind => Diana.Library.Generic_Package_Unit,
+                 Parent => "Graphics.Drivers");
+      Show_Resolution (Graphics_Site, "Graphics");
+      Show_Resolution (Drivers_Site, "Drivers");
+      Show_Resolution (Pool_Site, "Pool",
+                       Detail => "a generic grandchild of Graphics");
+
+      Lib.Require_All_Resolved;
+      Put_Line ("    all separate compilations present — grandchild generic "
+                & "loaded three levels deep.");
+   end;
 end Diana_Harness;
