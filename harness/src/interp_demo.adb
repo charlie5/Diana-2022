@@ -420,6 +420,21 @@ procedure Interp_Demo is
                 (Mark => Add (B.Used_Name (Definition => Type_Name_Def)))),
               Initialization => Init)));
 
+   --  "with Contract_Cases => (Guard => Consequence, ...)" and one case of it.
+   function Case_Of (Guard, Consequence : Cursor) return Cursor is
+     (Add (B.Contract_Case (Guard => Guard, Consequence => Consequence)));
+   function Cases_Aspect (Cases : Cursor_Array) return Cursor is
+     (Add (B.Semantic_Property
+             (Identity => Add (B.Aspect_Contract_Cases),
+              Value    => Add (B.Contract_Case_List
+                (Cases => Add (B.Contract_Case_S (List => NL (Cases))))))));
+
+   --  "with Subprogram_Variant => (Decreases => Expr)".
+   function Variant_Aspect (Expr : Cursor) return Cursor is
+     (Add (B.Semantic_Property
+             (Identity => Add (B.Aspect_Subprogram_Variant),
+              Value    => Add (B.Aspect_Expression (Value => Expr)))));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -660,6 +675,93 @@ procedure Interp_Demo is
          Assign (Acct_Def, Rec ([Field_Assoc (Balance, Lit (10))])),
          Print (Field_Of (Ref (Acct_Def), Balance))]);
 
+   --  function Sign (X) with Contract_Cases =>
+   --     (X > 0 => Result = 1, X = 0 => Result = 0, X < 0 => Result = -1);
+   Sign_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Sign"),
+             Specification => Func_Spec ([In_Par (Dbl_X)]),
+             Completion    => Blk ([],
+               [If_Else (Bin (Op_Gt, Ref (Dbl_X), Lit (0)),
+                         Seq ([Ret (Lit (1))]),
+                         Seq ([If_Else (Bin (Op_Eq, Ref (Dbl_X), Lit (0)),
+                                        Seq ([Ret (Lit (0))]),
+                                        Seq ([Ret (Lit (-1))]))]))])));
+   Sign_Decl : constant Cursor :=
+     Sub_Decl (Sign_Name,
+       [Cases_Aspect
+          ([Case_Of (Bin (Op_Gt, Ref (Dbl_X), Lit (0)),
+                     Bin (Op_Eq, Ref (Result_Def), Lit (1))),
+            Case_Of (Bin (Op_Eq, Ref (Dbl_X), Lit (0)),
+                     Bin (Op_Eq, Ref (Result_Def), Lit (0))),
+            Case_Of (Bin (Op_Lt, Ref (Dbl_X), Lit (0)),
+                     Bin (Op_Eq, Ref (Result_Def), Lit (-1)))])]);
+
+   --  function Bad_Abs (X) with Contract_Cases =>
+   --     (X >= 0 => Result = X, X < 0 => Result + X = 0);  -- body returns X (wrong)
+   Bad_Abs_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Bad_Abs"),
+             Specification => Func_Spec ([In_Par (Dbl_X)]),
+             Completion    => Blk ([], [Ret (Ref (Dbl_X))])));
+   Bad_Abs_Decl : constant Cursor :=
+     Sub_Decl (Bad_Abs_Name,
+       [Cases_Aspect
+          ([Case_Of (Bin (Op_Ge, Ref (Dbl_X), Lit (0)),
+                     Bin (Op_Eq, Ref (Result_Def), Ref (Dbl_X))),
+            Case_Of (Bin (Op_Lt, Ref (Dbl_X), Lit (0)),
+                     Bin (Op_Eq, Bin (Op_Plus, Ref (Result_Def), Ref (Dbl_X)),
+                          Lit (0)))])]);
+
+   --  function Count_Down (N) with Subprogram_Variant => (Decreases => N)
+   --     is begin if N = 0 then return 0; else return Count_Down (N - 1); end if;
+   Count_Name : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Count_Down")));
+   Count_Spec : constant Cursor := Func_Spec ([In_Par (N_Param)]);
+   Count_Body : constant Cursor :=
+     Blk ([], [If_Else (Bin (Op_Eq, Ref (N_Param), Lit (0)),
+                        Seq ([Ret (Lit (0))]),
+                        Seq ([Ret (Sub_Call (Count_Name,
+                                [Bin (Op_Minus, Ref (N_Param), Lit (1))]))]))]);
+   Count_Decl : constant Cursor :=
+     Sub_Decl (Count_Name, [Variant_Aspect (Ref (N_Param))]);
+
+   --  function Stuck (N) with Subprogram_Variant => (Decreases => N)
+   --     is begin return Stuck (N);  -- the variant does not decrease
+   Stuck_Name : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Stuck")));
+   Stuck_Spec : constant Cursor := Func_Spec ([In_Par (N_Param)]);
+   Stuck_Body : constant Cursor :=
+     Blk ([], [Ret (Sub_Call (Stuck_Name, [Ref (N_Param)]))]);
+   Stuck_Decl : constant Cursor :=
+     Sub_Decl (Stuck_Name, [Variant_Aspect (Ref (N_Param))]);
+
+   --  Put_Line (Sign (7)); Put_Line (Sign (-3));   -- 1, -1
+   Cases_Program : constant Cursor :=
+     Block_Stmt ([Sign_Decl],
+       [Print (Sub_Call (Sign_Name, [Lit (7)])),
+        Print (Sub_Call (Sign_Name, [Lit (-3)]))]);
+
+   --  Put_Line (Count_Down (3));   -- 0  (variant 3 > 2 > 1 > 0)
+   Variant_Program : constant Cursor :=
+     Block_Stmt ([Count_Decl], [Print (Sub_Call (Count_Name, [Lit (3)]))]);
+
+   --  Patch a recursive subprogram's stub once its spec and body are built.
+   Patch_Spec, Patch_Body : Cursor;
+   procedure Apply_Patch (E : in out Node'Class) is
+   begin
+      if E in Diana.Nodes.Subprogram_Name'Class then
+         Diana.Nodes.Subprogram_Name (E).Specification := Patch_Spec;
+         Diana.Nodes.Subprogram_Name (E).Completion    := Patch_Body;
+      end if;
+   end Apply_Patch;
+   procedure Complete (Def, Spec, Body_Block : Cursor) is
+   begin
+      Patch_Spec := Spec;
+      Patch_Body := Body_Block;
+      Program_Tree.Update_Element (Def, Apply_Patch'Access);
+   end Complete;
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -833,6 +935,21 @@ begin
    Diana.Interpreter.Run (Predicate_Program);
    Diana.Interpreter.Run (Invariant_Program);
 
+   --  Contract_Cases (Sign) and a recursive Subprogram_Variant (Count_Down).
+   Complete (Count_Name, Count_Spec, Count_Body);   -- close the recursive stubs
+   Complete (Stuck_Name, Stuck_Spec, Stuck_Body);
+   New_Line;
+   Put_Line ("Executing (Contract_Cases + Subprogram_Variant):");
+   Put_Line ("    function Sign (X) with Contract_Cases =>");
+   Put_Line ("       (X > 0 => Result = 1, X = 0 => Result = 0, X < 0 => Result = -1);");
+   Put_Line ("    Put_Line (Sign (7)); Put_Line (Sign (-3));");
+   Put_Line ("    function Count_Down (N) with Subprogram_Variant => (Decreases => N);");
+   Put_Line ("    Put_Line (Count_Down (3));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Cases_Program);
+   Diana.Interpreter.Run (Variant_Program);
+
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
    New_Line;
@@ -891,5 +1008,21 @@ begin
    exception
       when E : Diana.Interpreter.Assertion_Error =>
          Put_Line ("    'Acct.Balance = -1'     -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- Bad_Abs (-5): case fails
+        (Block_Stmt ([Bad_Abs_Decl], [Print (Sub_Call (Bad_Abs_Name, [Lit (-5)]))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Assertion_Error =>
+         Put_Line ("    'Bad_Abs (-5)'          -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- Stuck (5): variant fails
+        (Block_Stmt ([Stuck_Decl], [Print (Sub_Call (Stuck_Name, [Lit (5)]))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Assertion_Error =>
+         Put_Line ("    'Stuck (5)' (recursion) -> " & Ada.Exceptions.Exception_Message (E));
    end;
 end Interp_Demo;

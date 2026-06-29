@@ -46,11 +46,15 @@ package body Diana.Interpreter is
    package Record_Store is new Ada.Containers.Vectors
      (Positive, Value_Maps.Map, Value_Maps."=");
 
-   --  A subprogram's runtime contract: the Pre and Post condition expressions
-   --  (each a list of expression cursors).
+   --  A subprogram's runtime contract: Pre / Post conditions, the guard and
+   --  consequence of each Contract_Cases alternative (parallel lists; a void
+   --  guard is "others"), and a Subprogram_Variant expression (decreases).
    type Contract is record
-      Pre  : Node_List;
-      Post : Node_List;
+      Pre          : Node_List;
+      Post         : Node_List;
+      Case_Guards  : Node_List;
+      Case_Results : Node_List;
+      Variant      : Cursor := No_Element;
    end record;
 
    package Contract_Maps is new Ada.Containers.Indefinite_Hashed_Maps
@@ -58,6 +62,15 @@ package body Diana.Interpreter is
       Element_Type    => Contract,
       Hash            => Ada.Strings.Hash,
       Equivalent_Keys => "=");
+
+   --  Active Subprogram_Variant values, a stack per subprogram name, so each
+   --  recursive call can check its variant strictly decreased.
+   package Variant_Maps is new Ada.Containers.Indefinite_Hashed_Maps
+     (Key_Type        => String,
+      Element_Type    => Value_Vectors.Vector,
+      Hash            => Ada.Strings.Hash,
+      Equivalent_Keys => "=",
+      "="             => Value_Vectors."=");
 
    --  Predicate / Type_Invariant conditions keyed by the (sub)type name; the
    --  type name is also the placeholder the condition uses for the value.
@@ -86,7 +99,8 @@ package body Diana.Interpreter is
       Heap         : Value_Vectors.Vector;           --  allocated objects (1-based)
       Arrays       : Array_Store.Vector;             --  array values (1-based)
       Records      : Record_Store.Vector;            --  record values (1-based)
-      Contracts    : Contract_Maps.Map;              --  Pre/Post by subprogram name
+      Contracts    : Contract_Maps.Map;              --  Pre/Post/Cases/Variant by name
+      Variants     : Variant_Maps.Map;               --  active variant values per name
       Predicates   : Predicate_Maps.Map;             --  predicate/invariant by type name
       Constrained  : Constraint_Maps.Map;            --  variable name -> its type name
       Returning    : Boolean      := False;          --  a return is in progress
@@ -330,17 +344,33 @@ package body Diana.Interpreter is
                Identity : constant Cursor := As_Semantic_Property (P).Identity;
                Value    : constant Cursor := As_Semantic_Property (P).Value;
             begin
-               if Value /= No_Element and then Is_Aspect_Expression (Value) then
+               if Value = No_Element then
+                  null;
+               elsif Is_Aspect_Expression (Value) then
                   if Is_Aspect_Pre (Identity) then
                      Result.Pre.Append (As_Aspect_Expression (Value).Value);
                   elsif Is_Aspect_Post (Identity) then
                      Result.Post.Append (As_Aspect_Expression (Value).Value);
+                  elsif Is_Aspect_Subprogram_Variant (Identity) then
+                     Result.Variant := As_Aspect_Expression (Value).Value;
                   end if;
+               elsif Is_Contract_Case_List (Value)
+                 and then Is_Aspect_Contract_Cases (Identity)
+               then
+                  for K of As_Contract_Case_S
+                             (As_Contract_Case_List (Value).Cases).List
+                  loop
+                     Result.Case_Guards.Append (As_Contract_Case (K).Guard);
+                     Result.Case_Results.Append (As_Contract_Case (K).Consequence);
+                  end loop;
                end if;
             end;
          end if;
       end loop;
-      if not Result.Pre.Is_Empty or else not Result.Post.Is_Empty then
+      if not Result.Pre.Is_Empty or else not Result.Post.Is_Empty
+        or else not Result.Case_Guards.Is_Empty
+        or else Result.Variant /= No_Element
+      then
          Env.Contracts.Include (Name, Result);
       end if;
    end Register_Contracts;
@@ -636,6 +666,8 @@ package body Diana.Interpreter is
       Call      : Positive;
       Count     : Natural;
       Result    : Static_Value;
+      Name      : constant String := Spelling_Of (Definition);
+      Selected  : Cursor := No_Element;   --  chosen Contract_Cases consequence
    begin
       if    Is_Procedure_Header (Spec) then
          Params := As_Parameter_S (As_Procedure_Header (Spec).Parameters).List;
@@ -689,20 +721,68 @@ package body Diana.Interpreter is
       end loop;
 
       --  the call scope's lexical parent is where the subprogram was declared
-      Call := Enter (Env, Static_Link (Env, Current, Spelling_Of (Definition)));
+      Call := Enter (Env, Static_Link (Env, Current, Name));
       for I in 1 .. Count loop
          Define (Env, Call, Spelling_Of (Formals (I)), Values (I));
       end loop;
 
-      --  precondition checks (over the bound parameters)
-      if Env.Contracts.Contains (Spelling_Of (Definition)) then
-         for Condition of Env.Contracts.Element (Spelling_Of (Definition)).Pre loop
-            if not Bool_Of (Evaluate (Condition, Env, Call)) then
-               Leave (Env, Call);
-               raise Assertion_Error with
-                 "precondition failed in " & Spelling_Of (Definition);
+      --  contract checks at entry: Pre, Contract_Cases guard selection, and
+      --  the Subprogram_Variant strict-decrease check.
+      if Env.Contracts.Contains (Name) then
+         declare
+            C : constant Contract := Env.Contracts.Element (Name);
+         begin
+            for Condition of C.Pre loop
+               if not Bool_Of (Evaluate (Condition, Env, Call)) then
+                  Leave (Env, Call);
+                  raise Assertion_Error with "precondition failed in " & Name;
+               end if;
+            end loop;
+
+            if not C.Case_Guards.Is_Empty then
+               declare
+                  Others_At : Natural := 0;
+               begin
+                  for I in 1 .. Natural (C.Case_Guards.Length) loop
+                     if C.Case_Guards (I) = No_Element
+                       or else Is_Void (C.Case_Guards (I))
+                     then
+                        Others_At := I;
+                     elsif Bool_Of (Evaluate (C.Case_Guards (I), Env, Call)) then
+                        Selected := C.Case_Results (I);
+                        exit;
+                     end if;
+                  end loop;
+                  if Selected = No_Element and then Others_At /= 0 then
+                     Selected := C.Case_Results (Others_At);
+                  end if;
+                  if Selected = No_Element then
+                     Leave (Env, Call);
+                     raise Assertion_Error with "no contract case applies in " & Name;
+                  end if;
+               end;
             end if;
-         end loop;
+
+            if C.Variant /= No_Element then
+               declare
+                  V : constant Static_Value := Evaluate (C.Variant, Env, Call);
+               begin
+                  if Env.Variants.Contains (Name)
+                    and then not Env.Variants.Element (Name).Is_Empty
+                    and then Whole_Of (V)
+                             >= Whole_Of (Env.Variants.Element (Name).Last_Element)
+                  then
+                     Leave (Env, Call);
+                     raise Assertion_Error with
+                       "subprogram variant does not decrease in " & Name;
+                  end if;
+                  if not Env.Variants.Contains (Name) then
+                     Env.Variants.Insert (Name, Value_Vectors.Empty_Vector);
+                  end if;
+                  Env.Variants.Reference (Name).Append (V);
+               end;
+            end if;
+         end;
       end if;
 
       Env.Returning    := False;
@@ -714,16 +794,29 @@ package body Diana.Interpreter is
          raise Interpretation_Error with "exit or goto cannot leave a subprogram";
       end if;
 
-      --  postcondition checks (with "Result" bound to the returned value)
-      if Env.Contracts.Contains (Spelling_Of (Definition)) then
-         Define (Env, Call, "Result", Result);
-         for Condition of Env.Contracts.Element (Spelling_Of (Definition)).Post loop
-            if not Bool_Of (Evaluate (Condition, Env, Call)) then
+      --  contract checks at exit ("Result" bound): Post, the selected
+      --  Contract_Cases consequence, and the variant stack pop.
+      if Env.Contracts.Contains (Name) then
+         declare
+            C : constant Contract := Env.Contracts.Element (Name);
+         begin
+            Define (Env, Call, "Result", Result);
+            for Condition of C.Post loop
+               if not Bool_Of (Evaluate (Condition, Env, Call)) then
+                  Leave (Env, Call);
+                  raise Assertion_Error with "postcondition failed in " & Name;
+               end if;
+            end loop;
+            if Selected /= No_Element
+              and then not Bool_Of (Evaluate (Selected, Env, Call))
+            then
                Leave (Env, Call);
-               raise Assertion_Error with
-                 "postcondition failed in " & Spelling_Of (Definition);
+               raise Assertion_Error with "contract case failed in " & Name;
             end if;
-         end loop;
+            if C.Variant /= No_Element and then Env.Variants.Contains (Name) then
+               Env.Variants.Reference (Name).Delete_Last;
+            end if;
+         end;
       end if;
 
       --  copy out / in out formals back to their actual variables; the actual
