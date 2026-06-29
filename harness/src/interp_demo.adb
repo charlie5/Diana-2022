@@ -185,6 +185,20 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Increment")));
    Y_Gen         : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   --  generic-package demo: the formal object "Factor", a visible constant
+   --  "Base", a visible function "Scale" + its parameter, and two instances.
+   Factor_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Factor")));
+   Base_Def   : constant Cursor :=
+     Add (B.Constant_Name (Spelling => SU.To_Unbounded_String ("Base")));
+   Scale_Def  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Scale")));
+   Scale_X    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   By_2_Def   : constant Cursor :=
+     Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("By_2")));
+   By_3_Def   : constant Cursor :=
+     Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("By_3")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -382,6 +396,35 @@ procedure Interp_Demo is
         (Generic_Unit => Add (B.Used_Name (Definition => Generic_Def)),
          Associations => Add (B.Association_S (List => Items))))));
    end Instance_Of;
+
+   --  "Name : constant := Init;" and "package Name is new Generic (Actuals);"
+   --  as a declarative item.
+   function Const_Decl (Definition, Init : Cursor) return Cursor is
+     (Add (B.Constant_Declaration
+             (Names          => Add (B.Defining_Name_S (List => NL ([Definition]))),
+              Initialization => Init)));
+   function Pkg_Instance (Name_Def, Generic_Def : Cursor; Actuals : Cursor_Array)
+     return Cursor is
+     (Add (B.Package_Declaration
+             (Name       => Name_Def,
+              Completion => Instance_Of (Generic_Def, Actuals))));
+
+   --  package-instance members: "Pkg.Member" and "Pkg.Sub (Args)".
+   function Member (Pkg_Def, Member_Def : Cursor) return Cursor is
+     (Add (B.Selected_Component
+             (Prefix   => Add (B.Used_Name (Definition => Pkg_Def)),
+              Selector => Add (B.Used_Name (Definition => Member_Def)))));
+   function Member_Call (Pkg_Def, Member_Def : Cursor; Args : Cursor_Array)
+     return Cursor is
+      Items : Node_List;
+   begin
+      for A of Args loop
+         Items.Append (Add (B.Positional_Association (Value => A)));
+      end loop;
+      return Add (B.Function_Call
+                    (Prefix  => Member (Pkg_Def, Member_Def),
+                     Actuals => Add (B.Association_S (List => Items))));
+   end Member_Call;
 
    --  "if Condition then Then_Seq end if" (no else arm).
    function If_Then (Condition, Then_Seq : Cursor) return Cursor is
@@ -1049,6 +1092,40 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Add_5, [Lit (100)])),
            Print (Sub_Call (Add_10, [Lit (100)]))]);
 
+   --  generic
+   --     Factor : Integer;
+   --  package Scaler is
+   --     Base : constant Integer := Factor * 10;
+   --     function Scale (X : Integer) return Integer;   -- = X * Factor
+   --  end Scaler;
+   Scaler : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Scaler"),
+             Formals       => Add (B.Generic_Formal_S
+               (List => NL ([Generic_Object (Factor_Def)]))),
+             Specification => Add (B.Package_Specification
+               (Visible_Declarations => Add (B.Declaration_S (List => NL
+                 ([Const_Decl (Base_Def, Bin (Op_Mul, Ref (Factor_Def), Lit (10))),
+                   Sub_Decl (Scale_Def, [])])))))));
+
+   --  Two nested instantiations in a block, each with its own Factor; the
+   --  members are read (Base) and called (Scale) through the instance name.
+   --  declare
+   --     package By_2 is new Scaler (2);
+   --     package By_3 is new Scaler (3);
+   --  begin
+   --     Put_Line (By_2.Base);  Put_Line (By_3.Base);        -- 20, 30
+   --     Put_Line (By_2.Scale (5));  Put_Line (By_3.Scale (5));  -- 10, 15
+   --  end;
+   Package_Program : constant Cursor :=
+     Block_Stmt
+       ([Pkg_Instance (By_2_Def, Scaler, [Lit (2)]),
+         Pkg_Instance (By_3_Def, Scaler, [Lit (3)])],
+        [Print (Member (By_2_Def, Base_Def)),
+         Print (Member (By_3_Def, Base_Def)),
+         Print (Member_Call (By_2_Def, Scale_Def, [Lit (5)])),
+         Print (Member_Call (By_3_Def, Scale_Def, [Lit (5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1341,6 +1418,24 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Generic_Program);
+
+   --  Nested generic packages: a generic package instantiated twice in a block,
+   --  its members read and called through each instance name.
+   New_Line;
+   Put_Line ("Executing (nested generic packages):");
+   Put_Line ("    generic Factor : Integer; package Scaler is");
+   Put_Line ("       Base : constant Integer := Factor * 10;");
+   Put_Line ("       function Scale (X : Integer) return Integer;  -- = X * Factor");
+   Put_Line ("    end Scaler;");
+   Put_Line ("    declare package By_2 is new Scaler (2); package By_3 is new Scaler (3);");
+   Put_Line ("    begin Put_Line (By_2.Base); Put_Line (By_3.Base);          -- 20, 30");
+   Put_Line ("          Put_Line (By_2.Scale (5)); Put_Line (By_3.Scale (5)); end;  -- 10, 15");
+   New_Line;
+   Put_Line ("Output:");
+   --  complete the package's visible function Scale before instantiation
+   Complete (Scale_Def, Func_Spec ([In_Par (Scale_X)]),
+             Blk ([], [Ret (Bin (Op_Mul, Ref (Scale_X), Ref (Factor_Def)))]));
+   Diana.Interpreter.Run (Package_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

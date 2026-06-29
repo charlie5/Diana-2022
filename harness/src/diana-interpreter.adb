@@ -312,6 +312,7 @@ package body Diana.Interpreter is
          when Array_Value   => return "(array)";
          when Record_Value  => return "(record)";
          when Enum_Value    => return SU.To_String (V.Lit_Name);   --  by name
+         when Package_Value => return "(package)";
          when No_Value      => return "<no value>";
       end case;
    end Image;
@@ -446,8 +447,15 @@ package body Diana.Interpreter is
    function Evaluate (Expr : Cursor; Env : in out Environment; Current : Positive)
      return Static_Value;
    procedure Execute (Stmt : Cursor; Env : in out Environment; Current : Positive);
+   --  Home, when non-zero, is the call's static link (used for a package-member
+   --  call: the static link is the package instance's scope, not a lexical one).
    function Invoke (Definition : Cursor; Actuals : Node_List;
-                    Env : in out Environment; Current : Positive) return Static_Value;
+                    Env : in out Environment; Current : Positive;
+                    Home : Natural := 0) return Static_Value;
+   procedure Elaborate (Decls : Node_List; Env : in out Environment;
+                        Scope_Index : Positive);
+   procedure Instantiate_Package (Name, Completion : Cursor;
+                                  Env : in out Environment; Scope_Index : Positive);
 
    --  Check a value against the predicate / invariant of Type_Name (the type
    --  name is bound as the placeholder the condition tests).
@@ -536,9 +544,73 @@ package body Diana.Interpreter is
                                       As_Subprogram_Declaration (D).Properties);
                end if;
             end;
+         elsif Is_Package_Declaration (D)
+           and then Is_Unit_Instantiation (As_Package_Declaration (D).Completion)
+         then
+            --  "package I is new G (...);" — elaborate the instance now
+            Instantiate_Package (As_Package_Declaration (D).Name,
+                                 As_Package_Declaration (D).Completion,
+                                 Env, Scope_Index);
          end if;
       end loop;
    end Elaborate;
+
+   --  Instantiate a generic package: create the instance's scope (parented to
+   --  the scope where it is declared, so members see the enclosing names), bind
+   --  the generic formal objects to the actuals, elaborate the template's
+   --  visible declarations into that scope, and bind the instance name to a
+   --  Package_Value handle so "I.Member" / "I.Sub (...)" resolve through it.
+   procedure Instantiate_Package (Name, Completion : Cursor;
+                                  Env : in out Environment; Scope_Index : Positive)
+   is
+      Inst     : constant Cursor := As_Unit_Instantiation (Completion).Instance;
+      Template : constant Cursor :=
+        Definition_Of (As_Generic_Instantiation (Inst).Generic_Unit);
+      Gen_Spec : constant Cursor := As_Generic_Name (Template).Specification;
+      Formals  : Node_List;       --  generic formal-object names
+      Actuals  : Node_List;       --  the instantiation's actual expressions
+      Instance_Scope : Positive;
+   begin
+      if not Is_Package_Specification (Gen_Spec) then
+         raise Interpretation_Error with
+           "instantiating a non-package generic as a package";
+      end if;
+
+      for F of As_Generic_Formal_S
+                 (As_Generic_Name (Template).Formals).List
+      loop
+         if Is_Generic_Formal_Object (F) then
+            for Nm of As_Defining_Name_S
+                        (As_Generic_Formal_Object (F).Names).List
+            loop
+               Formals.Append (Nm);
+            end loop;
+         end if;
+      end loop;
+      for A of As_Association_S
+                 (As_Generic_Instantiation (Inst).Associations).List
+      loop
+         if Is_Positional_Association (A) then
+            Actuals.Append (As_Positional_Association (A).Value);
+         end if;
+      end loop;
+      if Natural (Formals.Length) /= Natural (Actuals.Length) then
+         raise Interpretation_Error with "wrong number of generic actuals";
+      end if;
+
+      --  the instance scope sees the enclosing names (a nested instantiation)
+      Instance_Scope := Enter (Env, Scope_Index);
+      for I in 1 .. Natural (Formals.Length) loop
+         Define (Env, Instance_Scope, Spelling_Of (Formals (I)),
+                 Evaluate (Actuals (I), Env, Scope_Index));
+      end loop;
+      Elaborate (As_Declaration_S
+                   (As_Package_Specification (Gen_Spec).Visible_Declarations).List,
+                 Env, Instance_Scope);
+
+      Define (Env, Scope_Index, Spelling_Of (Name),
+              Static_Value'(Kind => Package_Value, Instance => Instance_Scope));
+   end Instantiate_Package;
 
    --  Elaborate a Block's declarations into Scope_Index, then run its
    --  statements there (used for both block statements and subprogram bodies).
@@ -736,7 +808,8 @@ package body Diana.Interpreter is
    --  Call a user-defined subprogram.  The call scope's lexical parent is the
    --  global scope (top-level subprogram); recursion nests fresh call scopes.
    function Invoke (Definition : Cursor; Actuals : Node_List;
-                    Env : in out Environment; Current : Positive) return Static_Value
+                    Env : in out Environment; Current : Positive;
+                    Home : Natural := 0) return Static_Value
    is
       Spec      : Cursor := As_Subprogram_Name (Definition).Specification;
       Comp      : Cursor := As_Subprogram_Name (Definition).Completion;
@@ -844,8 +917,11 @@ package body Diana.Interpreter is
          end if;
       end loop;
 
-      --  the call scope's lexical parent is where the subprogram was declared
-      Call := Enter (Env, Static_Link (Env, Current, Name));
+      --  the call scope's lexical parent is where the subprogram was declared:
+      --  the package instance scope for a member call (Home), else the static
+      --  link found from the caller.
+      Call := Enter (Env,
+                     (if Home /= 0 then Home else Static_Link (Env, Current, Name)));
       for I in 1 .. Count loop
          Define (Env, Call, Spelling_Of (Formals (I)), Values (I));
       end loop;
@@ -1100,19 +1176,21 @@ package body Diana.Interpreter is
             return Env.Arrays (Arr.Elements).Element (Positive (I));
          end;
 
-      elsif Is_Selected_Component (Expr) then                 --  R.Field
+      elsif Is_Selected_Component (Expr) then                 --  R.Field / Pkg.Member
          declare
-            Rec : constant Static_Value :=
+            Prefix_Value : constant Static_Value :=
               Evaluate (As_Selected_Component (Expr).Prefix, Env, Current);
             Name : constant String :=
               Spelling_Of (Definition_Of (As_Selected_Component (Expr).Selector));
          begin
-            if Rec.Kind /= Record_Value then
+            if Prefix_Value.Kind = Package_Value then          --  a package member
+               return Lookup (Env, Prefix_Value.Instance, Name);
+            elsif Prefix_Value.Kind /= Record_Value then
                raise Interpretation_Error with "selecting from a non-record value";
-            elsif not Env.Records (Rec.Fields).Contains (Name) then
+            elsif not Env.Records (Prefix_Value.Fields).Contains (Name) then
                raise Interpretation_Error with "no such component: " & Name;
             end if;
-            return Env.Records (Rec.Fields).Element (Name);
+            return Env.Records (Prefix_Value.Fields).Element (Name);
          end;
 
       elsif Is_Parenthesized_Expression (Expr) then
@@ -1228,6 +1306,20 @@ package body Diana.Interpreter is
          begin
             if Is_Used_Builtin (Prefix) then
                return Apply (As_Used_Builtin (Prefix).Builtin_Operator, Args, Env, Current);
+            end if;
+            if Is_Selected_Component (Prefix) then            --  Pkg.Sub (...)
+               declare
+                  Pkg : constant Static_Value :=
+                    Evaluate (As_Selected_Component (Prefix).Prefix, Env, Current);
+                  Sub : constant Cursor :=
+                    Definition_Of (As_Selected_Component (Prefix).Selector);
+               begin
+                  if Pkg.Kind /= Package_Value then
+                     raise Interpretation_Error with
+                       "selected call on a non-package value";
+                  end if;
+                  return Invoke (Sub, Args, Env, Current, Home => Pkg.Instance);
+               end;
             end if;
             declare
                Def : constant Cursor := Definition_Of (Prefix);

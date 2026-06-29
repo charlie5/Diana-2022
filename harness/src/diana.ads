@@ -45,10 +45,12 @@ package Diana is
    --  or record store; Access_Value an address into its heap (0 = null).
    --  Enum_Value is an enumeration literal: its 0-based position (so it behaves
    --  like an integer in comparisons, case, and for) together with its name (so
-   --  it prints by name).
+   --  it prints by name).  Package_Value is a runtime-only handle into the
+   --  interpreter's scope store: the index of the scope holding a (generic)
+   --  package instance's declarations, so "Pkg.Member" resolves through it.
    type Value_Kind is (No_Value, String_Value, Boolean_Value,
                        Integer_Value, Real_Value, Access_Value,
-                       Array_Value, Record_Value, Enum_Value);
+                       Array_Value, Record_Value, Enum_Value, Package_Value);
    type Static_Value (Kind : Value_Kind := No_Value) is record
       case Kind is
          when No_Value      => null;
@@ -61,6 +63,7 @@ package Diana is
          when Record_Value  => Fields   : Natural;
          when Enum_Value    => Pos      : Long_Long_Integer;
                                Lit_Name : Symbol_Rep;
+         when Package_Value => Instance : Natural;
       end case;
    end record;
 
