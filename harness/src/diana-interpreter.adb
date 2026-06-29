@@ -113,6 +113,8 @@ package body Diana.Interpreter is
       Raising      : Boolean      := False;          --  an exception is in flight
       Raised       : Symbol_Rep   := SU.Null_Unbounded_String;  -- its name
       Raised_Msg   : Symbol_Rep   := SU.Null_Unbounded_String;  -- its "with" message
+      Handling     : Symbol_Rep   := SU.Null_Unbounded_String;  -- exc. now in a handler
+      Handling_Msg : Symbol_Rep   := SU.Null_Unbounded_String;  -- its message
    end record;
 
    function Pending (Env : Environment) return Boolean
@@ -568,8 +570,19 @@ package body Diana.Interpreter is
          begin
             for Alt of As_Alternative_S (Handlers).List loop
                if Is_Case_Alternative (Alt) and then Handler_Matches (Alt, Name) then
-                  Env.Raising := False;
-                  Execute (As_Case_Alternative (Alt).Statements, Env, Scope_Index);
+                  --  enter the handler: record the exception being handled (for
+                  --  a bare "raise;" and Exception_Message), saving the outer one
+                  declare
+                     Saved_Handling : constant Symbol_Rep := Env.Handling;
+                     Saved_Message  : constant Symbol_Rep := Env.Handling_Msg;
+                  begin
+                     Env.Handling     := Env.Raised;
+                     Env.Handling_Msg := Env.Raised_Msg;
+                     Env.Raising := False;
+                     Execute (As_Case_Alternative (Alt).Statements, Env, Scope_Index);
+                     Env.Handling     := Saved_Handling;
+                     Env.Handling_Msg := Saved_Message;
+                  end;
                   exit;
                end if;
             end loop;
@@ -1076,7 +1089,10 @@ package body Diana.Interpreter is
             declare
                Def : constant Cursor := Definition_Of (Prefix);
             begin
-               if Is_Subprogram_Name (Def) then
+               if Spelling_Of (Def) = "Exception_Message" then
+                  --  the message of the exception currently being handled
+                  return (Kind => String_Value, Text => Env.Handling_Msg);
+               elsif Is_Subprogram_Name (Def) then
                   return Invoke (Def, Args, Env, Current);
                else
                   raise Interpretation_Error with "call to a non-subprogram";
@@ -1228,21 +1244,28 @@ package body Diana.Interpreter is
             Leave (Env, Inner);
          end;
 
-      elsif Is_Raise_Statement (Stmt) then           --  raise E [with Msg];
+      elsif Is_Raise_Statement (Stmt) then           --  raise E [with Msg];  /  raise;
          declare
             Exc : constant Cursor := As_Raise_Statement (Stmt).Exception_Name;
             Msg : constant Cursor := As_Raise_Statement (Stmt).Message;
          begin
             if Exc = No_Element or else Is_Void (Exc) then
-               raise Interpretation_Error with "bare re-raise is not supported";
-            end if;
-            Env.Raising := True;
-            Env.Raised  := SU.To_Unbounded_String (Spelling_Of (Definition_Of (Exc)));
-            if Msg /= No_Element and then not Is_Void (Msg) then
-               Env.Raised_Msg :=
-                 SU.To_Unbounded_String (Image (Evaluate (Msg, Env, Current)));
+               --  bare re-raise: re-raise the exception currently being handled
+               if SU.Length (Env.Handling) = 0 then
+                  raise Interpretation_Error with "'raise;' outside an exception handler";
+               end if;
+               Env.Raising    := True;
+               Env.Raised     := Env.Handling;
+               Env.Raised_Msg := Env.Handling_Msg;
             else
-               Env.Raised_Msg := SU.Null_Unbounded_String;
+               Env.Raising := True;
+               Env.Raised  := SU.To_Unbounded_String (Spelling_Of (Definition_Of (Exc)));
+               if Msg /= No_Element and then not Is_Void (Msg) then
+                  Env.Raised_Msg :=
+                    SU.To_Unbounded_String (Image (Evaluate (Msg, Env, Current)));
+               else
+                  Env.Raised_Msg := SU.Null_Unbounded_String;
+               end if;
             end if;
          end;
 

@@ -145,6 +145,8 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
    My_Error    : constant Cursor :=
      Add (B.Exception_Name (Spelling => SU.To_Unbounded_String ("My_Error")));
+   ExcMsg_Name : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Exception_Message")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -463,6 +465,13 @@ procedure Interp_Demo is
         (Declarations => Add (B.Item_S (List => NL (Decls))),
          Statements   => Add (B.Statement_S (List => NL (Stmts))),
          Handlers     => Add (B.Alternative_S (List => NL (Handlers))))))));
+
+   --  bare "raise;" (re-raise) and the "Exception_Message" of the handled exc.
+   function Re_Raise return Cursor is (Add (B.Raise_Statement));
+   function Exc_Msg return Cursor is
+     (Add (B.Function_Call
+             (Prefix  => Add (B.Used_Name (Definition => ExcMsg_Name)),
+              Actuals => Add (B.Association_S))));
 
    --  The summation program (no calls).
    Program : constant Cursor :=
@@ -832,6 +841,19 @@ procedure Interp_Demo is
         [Call_Proc (Boom_Name, []), Print (Lit (5))],
         [Handler (My_Error, Seq ([Print (Lit (77))]))]);
 
+   --  begin
+   --     begin raise My_Error with "boom";
+   --     exception when My_Error => Put_Line (Exception_Message); raise; end;
+   --  exception when My_Error => Put_Line (99); end;          -- "boom", then 99
+   Reraise_Program : constant Cursor :=
+     Block_With
+       ([],
+        [Block_With
+           ([],
+            [Raise_Exc (My_Error, Str_Lit ("boom"))],
+            [Handler (My_Error, Seq ([Print (Exc_Msg), Re_Raise]))])],
+        [Handler (My_Error, Seq ([Print (Lit (99))]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1057,6 +1079,18 @@ begin
    Put_Line ("Output:");
    Diana.Interpreter.Run (Exc_Program);
    Diana.Interpreter.Run (Propagate_Program);
+
+   --  Bare re-raise and Exception_Message: an inner handler prints the message
+   --  and re-raises; the outer handler then catches it.
+   New_Line;
+   Put_Line ("Executing (re-raise + Exception_Message):");
+   Put_Line ("    begin");
+   Put_Line ("       begin raise My_Error with ""boom"";");
+   Put_Line ("       exception when My_Error => Put_Line (Exception_Message); raise; end;");
+   Put_Line ("    exception when My_Error => Put_Line (99); end;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Reraise_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
