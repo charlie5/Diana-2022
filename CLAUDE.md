@@ -90,9 +90,9 @@ The interpretive harness must:
 - Execute a given DIANA tree, and **error out if execution cannot be completed** — demonstrated two ways: a missing separate compilation (`Require_All_Resolved` / `Missing_Compilation`) and an unexecutable tree (`Diana.Interpreter` / `Interpretation_Error`, e.g. an unbound variable).
 - Provide a way to **merge in separately-compiled DIANA** — demonstrated by `Diana.Library.Merge`.
 
-`Diana.Interpreter` is a first execution slice: it walks a tree through the accessors and evaluates it over the `Static_Value` model — integer/boolean literals, variable references, built-in operator calls (arithmetic + comparison), assignment, if-statements, while-loops, statement sequences, and `Put_Line`. `interp_demo.adb` builds a `while`-loop summation and runs it (prints 15), then shows the error path.
+`Diana.Interpreter` is a first execution slice: it walks a tree through the accessors and evaluates it over the `Static_Value` model — integer/boolean literals, variable references, built-in operator calls (arithmetic + comparison), assignment, if-statements, while-loops, statement sequences, `Put_Line`, and **user-defined subprogram calls over a call stack** (frames of bindings keyed by defining-occurrence spelling, with global-fallback name resolution and `Return_Statement` handling, so recursion works). `interp_demo.adb` builds and runs a `while`-loop summation (prints 15) and a recursive `Fact` (prints 120 — five nested frames), then shows the error path.
 
-Still open: broadening the interpreter (real/string/access values, subprogram calls and a call stack, declarations/scopes, the full statement set). `diana_harness.adb` exercises the builder/accessor API and the merge / error-on-missing path; `interp_demo.adb` exercises execution.
+Still open: broadening the interpreter (real/string/access values, lexically-scoped declarations/locals instead of the flat global+top-frame model, `out`/`in out` parameter copy-back, the full statement set: `case`, `for`-loops, `exit`, blocks). `diana_harness.adb` exercises the builder/accessor API and the merge / error-on-missing path; `interp_demo.adb` exercises execution.
 
 ## Reference sources
 

@@ -15,6 +15,7 @@
 with Ada.Text_IO;      use Ada.Text_IO;
 with Ada.Exceptions;
 with Diana;            use Diana;
+with Diana.Nodes;
 with Diana.Builders;
 with Diana.Interpreter;
 
@@ -32,15 +33,34 @@ procedure Interp_Demo is
       return Trees.Last_Child (Program_Tree.Root);
    end Add;
 
+   --  A Node_List (an IDL "Seq Of") from a literal array of cursors.
+   function NL (Items : Cursor_Array) return Node_List is
+      L : Node_List;
+   begin
+      for I of Items loop
+         L.Append (I);
+      end loop;
+      return L;
+   end NL;
+
    --  The symbol table: operators and defining occurrences, built once.
-   Op_Plus : constant Cursor := Add (B.Op_Plus);
-   Op_Le   : constant Cursor := Add (B.Op_Less_Equal);
-   Sum_Def : constant Cursor :=
+   Op_Plus  : constant Cursor := Add (B.Op_Plus);
+   Op_Minus : constant Cursor := Add (B.Op_Minus);
+   Op_Mul   : constant Cursor := Add (B.Op_Multiply);
+   Op_Le    : constant Cursor := Add (B.Op_Less_Equal);
+   Sum_Def  : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sum")));
-   N_Def   : constant Cursor :=
+   N_Def    : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("N")));
-   Put_Def : constant Cursor :=
+   Put_Def  : constant Cursor :=
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Put_Line")));
+   --  The recursive function "Fact" and its formal parameter "N".  Subprogram_
+   --  Name is created first (a stub); its spec and body are filled in once the
+   --  body — which calls Fact recursively — has been built.
+   Fact_Def : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Fact")));
+   N_Param  : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -82,14 +102,39 @@ procedure Interp_Demo is
               Statements => Body_Seq)));
 
    function Print (Arg : Cursor) return Cursor is
-      Items : Node_List;
    begin
-      Items.Append (Add (B.Positional_Association (Value => Arg)));
       return Add (B.Procedure_Call
                     (Prefix  => Add (B.Used_Name (Definition => Put_Def)),
-                     Actuals => Add (B.Association_S (List => Items))));
+                     Actuals => Add (B.Association_S
+                                       (List => NL ([Add (B.Positional_Association (Value => Arg))])))));
    end Print;
 
+   --  A call to a user subprogram Def with the given actuals.
+   function Sub_Call (Def : Cursor; Args : Cursor_Array) return Cursor is
+      Items : Node_List;
+   begin
+      for A of Args loop
+         Items.Append (Add (B.Positional_Association (Value => A)));
+      end loop;
+      return Add (B.Function_Call
+                    (Prefix  => Add (B.Used_Name (Definition => Def)),
+                     Actuals => Add (B.Association_S (List => Items))));
+   end Sub_Call;
+
+   function Ret (Value : Cursor) return Cursor is
+     (Add (B.Return_Statement (Returned_Object => Value)));
+
+   --  "if Condition then Then_Seq else Else_Seq end if" (the else clause has a
+   --  null condition, which the interpreter reads as the else arm).
+   function If_Else (Condition, Then_Seq, Else_Seq : Cursor) return Cursor is
+     (Add (B.If_Statement
+             (Clauses => Add (B.Conditional_Clause_S
+               (List => NL
+                  ([Add (B.Conditional_Clause (Condition  => Condition,
+                                               Statements => Then_Seq)),
+                    Add (B.Conditional_Clause (Statements => Else_Seq))]))))));
+
+   --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
            Assign (N_Def,   Lit (1)),
@@ -97,6 +142,36 @@ procedure Interp_Demo is
                      Seq ([Assign (Sum_Def, Bin (Op_Plus, Ref (Sum_Def), Ref (N_Def))),
                            Assign (N_Def,   Bin (Op_Plus, Ref (N_Def),   Lit (1)))])),
            Print (Ref (Sum_Def))]);
+
+   --  function Fact (N : Integer) return Integer is
+   --     begin if N <= 1 then return 1; else return N * Fact (N - 1); end if; end;
+   N_Formal  : constant Cursor :=
+     Add (B.In_Parameter
+            (Names => Add (B.Defining_Name_S (List => NL ([N_Param])))));
+   Fact_Spec : constant Cursor :=
+     Add (B.Function_Header
+            (Parameters => Add (B.Parameter_S (List => NL ([N_Formal])))));
+   Fact_Body : constant Cursor :=
+     Add (B.Block
+            (Statements => Seq
+              ([If_Else (Bin (Op_Le, Ref (N_Param), Lit (1)),
+                         Seq ([Ret (Lit (1))]),
+                         Seq ([Ret (Bin (Op_Mul, Ref (N_Param),
+                                         Sub_Call (Fact_Def,
+                                           [Bin (Op_Minus, Ref (N_Param), Lit (1))])))]))])));
+
+   --  Put_Line (Fact (5));   -- expects 120
+   Fact_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Fact_Def, [Lit (5)]))]);
+
+   --  Fill Fact's stub now that its spec and body exist.
+   procedure Define_Fact (E : in out Node'Class) is
+   begin
+      if E in Diana.Nodes.Subprogram_Name'Class then
+         Diana.Nodes.Subprogram_Name (E).Specification := Fact_Spec;
+         Diana.Nodes.Subprogram_Name (E).Completion    := Fact_Body;
+      end if;
+   end Define_Fact;
 begin
    Put_Line ("DIANA_2022 interpreter — executing a built program:");
    New_Line;
@@ -110,6 +185,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Program);
+
+   --  Subprogram calls + a call stack: a recursive factorial.
+   New_Line;
+   Put_Line ("Executing (recursion + call stack):");
+   Put_Line ("    function Fact (N) is");
+   Put_Line ("       if N <= 1 then return 1; else return N * Fact (N - 1); end if;");
+   Put_Line ("    Put_Line (Fact (5));");
+   New_Line;
+   Put_Line ("Output:");
+   Program_Tree.Update_Element (Fact_Def, Define_Fact'Access);  -- complete Fact's stub
+   Diana.Interpreter.Run (Fact_Program);
 
    --  The execute-or-error requirement: running a use of an unbound variable
    --  must fail rather than produce a wrong answer.
