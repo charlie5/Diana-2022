@@ -110,10 +110,14 @@ package body Diana.Interpreter is
       Exit_Target  : Symbol_Rep   := SU.Null_Unbounded_String;  -- "" = innermost
       Jumping      : Boolean      := False;          --  a goto is in progress
       Goto_Target  : Symbol_Rep   := SU.Null_Unbounded_String;  -- the label
+      Raising      : Boolean      := False;          --  an exception is in flight
+      Raised       : Symbol_Rep   := SU.Null_Unbounded_String;  -- its name
+      Raised_Msg   : Symbol_Rep   := SU.Null_Unbounded_String;  -- its "with" message
    end record;
 
    function Pending (Env : Environment) return Boolean
-     is (Env.Returning or else Env.Exiting or else Env.Jumping);
+     is (Env.Returning or else Env.Exiting or else Env.Jumping
+         or else Env.Raising);
 
    --  Push a fresh scope whose enclosing scope is Parent; return its index.
    function Enter (Env : in out Environment; Parent : Natural) return Positive is
@@ -523,17 +527,53 @@ package body Diana.Interpreter is
 
    --  Elaborate a Block's declarations into Scope_Index, then run its
    --  statements there (used for both block statements and subprogram bodies).
+   --  Does an exception handler ("when E1 | E2 | others => ...") catch the
+   --  exception named Exception_Name?
+   function Handler_Matches (Alt : Cursor; Exception_Name : String) return Boolean is
+   begin
+      for C of As_Choice_S (As_Case_Alternative (Alt).Choices).List loop
+         if Is_Others_Choice (C) then
+            return True;
+         elsif Is_Choice_Expression (C)
+           and then Spelling_Of (Definition_Of (As_Choice_Expression (C).Value))
+                    = Exception_Name
+         then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Handler_Matches;
+
    procedure Run_Block_In (Block_Cursor : Cursor; Env : in out Environment;
                            Scope_Index : Positive)
    is
       Declarations : constant Cursor := As_Block (Block_Cursor).Declarations;
       Statements   : constant Cursor := As_Block (Block_Cursor).Statements;
+      Handlers     : constant Cursor := As_Block (Block_Cursor).Handlers;
    begin
       if Declarations /= No_Element and then Is_Item_S (Declarations) then
          Elaborate (As_Item_S (Declarations).List, Env, Scope_Index);
       end if;
       if Statements /= No_Element and then Is_Statement_S (Statements) then
          Execute (Statements, Env, Scope_Index);
+      end if;
+
+      --  exception handlers: a "when E | others => ..." catching the in-flight
+      --  exception clears it and runs its statements in this block's scope.
+      if Env.Raising and then Handlers /= No_Element
+        and then Is_Alternative_S (Handlers)
+      then
+         declare
+            Name : constant String := SU.To_String (Env.Raised);
+         begin
+            for Alt of As_Alternative_S (Handlers).List loop
+               if Is_Case_Alternative (Alt) and then Handler_Matches (Alt, Name) then
+                  Env.Raising := False;
+                  Execute (As_Case_Alternative (Alt).Statements, Env, Scope_Index);
+                  exit;
+               end if;
+            end loop;
+         end;
       end if;
    end Run_Block_In;
 
@@ -670,6 +710,7 @@ package body Diana.Interpreter is
       Name      : constant String := Spelling_Of (Definition);
       Selected  : Cursor := No_Element;   --  chosen Contract_Cases consequence
       Old_Snap  : Value_Maps.Map;         --  parameter values at entry (for 'Old)
+      Pushed    : Boolean := False;       --  this call pushed a variant value
    begin
       if    Is_Procedure_Header (Spec) then
          Params := As_Parameter_S (As_Procedure_Header (Spec).Parameters).List;
@@ -789,6 +830,7 @@ package body Diana.Interpreter is
                      Env.Variants.Insert (Name, Value_Vectors.Empty_Vector);
                   end if;
                   Env.Variants.Reference (Name).Append (V);
+                  Pushed := True;
                end;
             end if;
          end;
@@ -803,48 +845,54 @@ package body Diana.Interpreter is
          raise Interpretation_Error with "exit or goto cannot leave a subprogram";
       end if;
 
-      --  contract checks at exit ("Result" bound): Post, the selected
-      --  Contract_Cases consequence, and the variant stack pop.
-      if Env.Contracts.Contains (Name) then
-         declare
-            C         : constant Contract := Env.Contracts.Element (Name);
-            Saved_Old : constant Value_Maps.Map := Env.Old_Values;
-         begin
-            Define (Env, Call, "Result", Result);
-            Env.Old_Values := Old_Snap;        --  make 'Old visible to Post / consequences
-            for Condition of C.Post loop
-               if not Bool_Of (Evaluate (Condition, Env, Call)) then
-                  Leave (Env, Call);
-                  raise Assertion_Error with "postcondition failed in " & Name;
-               end if;
-            end loop;
-            if Selected /= No_Element
-              and then not Bool_Of (Evaluate (Selected, Env, Call))
-            then
-               Leave (Env, Call);
-               raise Assertion_Error with "contract case failed in " & Name;
-            end if;
-            Env.Old_Values := Saved_Old;       --  restore the caller's 'Old (if any)
-            if C.Variant /= No_Element and then Env.Variants.Contains (Name) then
-               Env.Variants.Reference (Name).Delete_Last;
-            end if;
-         end;
-      end if;
-
-      --  copy out / in out formals back to their actual variables; the actual
-      --  must be a name (else it is not a legal out/in out actual)
-      for I in 1 .. Count loop
-         if Copy_Back (I) then
+      --  On normal completion (no exception propagating): exit contract checks
+      --  ("Result" bound) — Post and the selected Contract_Cases consequence —
+      --  then copy back out / in out formals.  An exception skips both and just
+      --  propagates out of the subprogram.
+      if not Env.Raising then
+         if Env.Contracts.Contains (Name) then
             declare
-               Final  : constant Static_Value :=
-                 Lookup (Env, Call, Spelling_Of (Formals (I)));
-               Target : constant String :=
-                 Spelling_Of (Definition_Of (Actuals_E (I)));
+               C         : constant Contract := Env.Contracts.Element (Name);
+               Saved_Old : constant Value_Maps.Map := Env.Old_Values;
             begin
-               Assign (Env, Current, Target, Final);
+               Define (Env, Call, "Result", Result);
+               Env.Old_Values := Old_Snap;    --  'Old visible to Post / consequences
+               for Condition of C.Post loop
+                  if not Bool_Of (Evaluate (Condition, Env, Call)) then
+                     Leave (Env, Call);
+                     raise Assertion_Error with "postcondition failed in " & Name;
+                  end if;
+               end loop;
+               if Selected /= No_Element
+                 and then not Bool_Of (Evaluate (Selected, Env, Call))
+               then
+                  Leave (Env, Call);
+                  raise Assertion_Error with "contract case failed in " & Name;
+               end if;
+               Env.Old_Values := Saved_Old;   --  restore the caller's 'Old (if any)
             end;
          end if;
-      end loop;
+
+         for I in 1 .. Count loop
+            if Copy_Back (I) then
+               declare
+                  Final  : constant Static_Value :=
+                    Lookup (Env, Call, Spelling_Of (Formals (I)));
+                  Target : constant String :=
+                    Spelling_Of (Definition_Of (Actuals_E (I)));
+               begin
+                  Assign (Env, Current, Target, Final);
+               end;
+            end if;
+         end loop;
+      end if;
+
+      --  pop this call's variant value (on either the normal or exception path)
+      if Pushed and then Env.Variants.Contains (Name)
+        and then not Env.Variants.Element (Name).Is_Empty
+      then
+         Env.Variants.Reference (Name).Delete_Last;
+      end if;
 
       Leave (Env, Call);
       return Result;
@@ -1180,12 +1228,37 @@ package body Diana.Interpreter is
             Leave (Env, Inner);
          end;
 
+      elsif Is_Raise_Statement (Stmt) then           --  raise E [with Msg];
+         declare
+            Exc : constant Cursor := As_Raise_Statement (Stmt).Exception_Name;
+            Msg : constant Cursor := As_Raise_Statement (Stmt).Message;
+         begin
+            if Exc = No_Element or else Is_Void (Exc) then
+               raise Interpretation_Error with "bare re-raise is not supported";
+            end if;
+            Env.Raising := True;
+            Env.Raised  := SU.To_Unbounded_String (Spelling_Of (Definition_Of (Exc)));
+            if Msg /= No_Element and then not Is_Void (Msg) then
+               Env.Raised_Msg :=
+                 SU.To_Unbounded_String (Image (Evaluate (Msg, Env, Current)));
+            else
+               Env.Raised_Msg := SU.Null_Unbounded_String;
+            end if;
+         end;
+
       elsif Is_Return_Statement (Stmt) then
          declare
             Obj : constant Cursor := As_Return_Statement (Stmt).Returned_Object;
          begin
             if Obj /= No_Element and then not Is_Void (Obj) then
-               Env.Return_Value := Evaluate (Obj, Env, Current);
+               declare
+                  Value : constant Static_Value := Evaluate (Obj, Env, Current);
+               begin
+                  if Env.Raising then        --  the returned expression raised
+                     return;
+                  end if;
+                  Env.Return_Value := Value;
+               end;
             end if;
             Env.Returning := True;
          end;
@@ -1196,7 +1269,9 @@ package body Diana.Interpreter is
             Value  : constant Static_Value :=
               Evaluate (As_Assignment (Stmt).Source, Env, Current);
          begin
-            if Is_Dereference (Target) then          --  name.all := Value
+            if Env.Raising then              --  the source expression raised
+               return;
+            elsif Is_Dereference (Target) then       --  name.all := Value
                declare
                   Acc : constant Static_Value :=
                     Evaluate (As_Dereference (Target).Prefix, Env, Current);
@@ -1266,8 +1341,13 @@ package body Diana.Interpreter is
          begin
             if Name = "Put_Line" or else Name = "Put" then
                for A of Args loop
-                  Put_Line (Image (Evaluate (As_Positional_Association (A).Value,
-                                             Env, Current)));
+                  declare
+                     V : constant Static_Value :=
+                       Evaluate (As_Positional_Association (A).Value, Env, Current);
+                  begin
+                     exit when Env.Raising;   --  the argument expression raised
+                     Put_Line (Image (V));
+                  end;
                end loop;
             elsif Is_Subprogram_Name (Def) then
                Discard := Invoke (Def, Args, Env, Current);
@@ -1481,6 +1561,12 @@ package body Diana.Interpreter is
       if Env.Jumping then
          raise Interpretation_Error with
            "goto: label not found: " & SU.To_String (Env.Goto_Target);
+      end if;
+      if Env.Raising then
+         raise Unhandled_Exception with
+           SU.To_String (Env.Raised)
+           & (if SU.Length (Env.Raised_Msg) = 0 then ""
+              else " (" & SU.To_String (Env.Raised_Msg) & ")");
       end if;
    end Run;
 

@@ -25,4 +25,8 @@ package Diana.Interpreter is
    --  wrong, as opposed to the interpreter being unable to proceed.
    Assertion_Error : exception;
 
+   --  Raised when a DIANA "raise" propagates to the top with no matching
+   --  handler; the message names the (unhandled) exception.
+   Unhandled_Exception : exception;
+
 end Diana.Interpreter;

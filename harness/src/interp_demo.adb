@@ -143,6 +143,8 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Result")));
    Old_Attr    : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
+   My_Error    : constant Cursor :=
+     Add (B.Exception_Name (Spelling => SU.To_Unbounded_String ("My_Error")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -442,6 +444,25 @@ procedure Interp_Demo is
      (Add (B.Attribute_Reference
              (Prefix    => Add (B.Used_Object (Definition => Name_Def)),
               Attribute => Add (B.Used_Name (Definition => Old_Attr)))));
+
+   --  "raise Exc [with Message];", a "when Exc => Stmts" handler, and a block
+   --  statement with exception handlers.
+   function Raise_Exc (Exc_Def : Cursor; Message : Cursor := No_Element)
+     return Cursor is
+     (Add (B.Raise_Statement
+             (Exception_Name => Add (B.Used_Name (Definition => Exc_Def)),
+              Message        => Message)));
+   function Handler (Exc_Def, Stmts : Cursor) return Cursor is
+     (Add (B.Case_Alternative
+             (Choices => Add (B.Choice_S (List => NL
+               ([Add (B.Choice_Expression
+                        (Value => Add (B.Used_Name (Definition => Exc_Def))))]))),
+              Statements => Stmts)));
+   function Block_With (Decls, Stmts, Handlers : Cursor_Array) return Cursor is
+     (Add (B.Block_Statement (Block => Add (B.Block
+        (Declarations => Add (B.Item_S (List => NL (Decls))),
+         Statements   => Add (B.Statement_S (List => NL (Stmts))),
+         Handlers     => Add (B.Alternative_S (List => NL (Handlers))))))));
 
    --  The summation program (no calls).
    Program : constant Cursor :=
@@ -787,6 +808,30 @@ procedure Interp_Demo is
         Call_Proc (Inc_Name, [Ref (A_Def)]),
         Print (Ref (A_Def))]);
 
+   --  procedure Boom is begin raise My_Error; end;
+   Boom_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Boom"),
+             Specification => Proc_Spec ([]),
+             Completion    => Blk ([], [Raise_Exc (My_Error)])));
+
+   --  begin Put_Line (1); raise My_Error; Put_Line (2);
+   --  exception when My_Error => Put_Line (99); end;  Put_Line (3);   -- 1, 99, 3
+   Exc_Program : constant Cursor :=
+     Seq ([Block_With
+             ([],
+              [Print (Lit (1)), Raise_Exc (My_Error), Print (Lit (2))],
+              [Handler (My_Error, Seq ([Print (Lit (99))]))]),
+           Print (Lit (3))]);
+
+   --  declare procedure Boom ... begin Boom; Put_Line (5);   -- Boom propagates
+   --  exception when My_Error => Put_Line (77); end;                   -- 77
+   Propagate_Program : constant Cursor :=
+     Block_With
+       ([Sub_Body_Item (Boom_Name)],
+        [Call_Proc (Boom_Name, []), Print (Lit (5))],
+        [Handler (My_Error, Seq ([Print (Lit (77))]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1000,6 +1045,19 @@ begin
    Put_Line ("Output:");
    Diana.Interpreter.Run (Old_Program);
 
+   --  Exception handlers: raise + handle in the same block, and propagation
+   --  out of a called procedure to the caller's handler.
+   New_Line;
+   Put_Line ("Executing (exception handlers):");
+   Put_Line ("    begin Put_Line (1); raise My_Error; Put_Line (2);");
+   Put_Line ("       exception when My_Error => Put_Line (99); end;  Put_Line (3);");
+   Put_Line ("    procedure Boom is begin raise My_Error; end;");
+   Put_Line ("    begin Boom; Put_Line (5); exception when My_Error => Put_Line (77); end;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Exc_Program);
+   Diana.Interpreter.Run (Propagate_Program);
+
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
    New_Line;
@@ -1083,5 +1141,13 @@ begin
    exception
       when E : Diana.Interpreter.Assertion_Error =>
          Put_Line ("    'Bad_Inc (A)' (X'Old+2) -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- raise with no handler
+        (Seq ([Raise_Exc (My_Error, Str_Lit ("boom"))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Unhandled_Exception =>
+         Put_Line ("    'raise My_Error' (top)  -> " & Ada.Exceptions.Exception_Message (E));
    end;
 end Interp_Demo;
