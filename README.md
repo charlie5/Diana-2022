@@ -129,9 +129,12 @@ missing compilation, then **merges** the compilation in and resolves the
 reference in place — shown for a plain object unit, a separately-compiled
 **generic package** that a second compilation instantiates, a separately-compiled
 **child generic package** (`Buffers.Bounded`) that is rejected until its parent is
-compiled, then resolved through its compound-name instantiation, and a
+compiled, then resolved through its compound-name instantiation, a
 **nested generic package** (`Registry.Cache`) where one merge of the enclosing
-package resolves both halves of the compound-name instantiation.
+package resolves both halves of the compound-name instantiation, and a
+**child package of a generic package** (`Tables.Sorted`) used through a parent
+instance (`new T_Inst.Sorted`), where the prefix resolves locally and only the
+selector is the cross-unit reference to the separately-compiled child generic.
 
 ## Harness requirements
 

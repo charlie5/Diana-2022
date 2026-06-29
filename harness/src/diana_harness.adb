@@ -289,4 +289,88 @@ begin
       Lib.Require_All_Resolved;
       Put_Line ("    all separate compilations present — one merge resolved both.");
    end;
+   New_Line;
+
+   --  8. Separate compilation of a CHILD PACKAGE OF A GENERIC PACKAGE.  Here the
+   --     PARENT 'Tables' is itself a generic package; its child 'Tables.Sorted'
+   --     is therefore implicitly generic (Ada 22 RM 10.1.1).  Both are separately
+   --     compiled.  A child of a generic is used through an INSTANCE of the
+   --     parent: 'Client4' does
+   --        package T_Inst is new Tables;          -- references generic Tables
+   --        package S_Inst is new T_Inst.Sorted;   -- T_Inst local, Sorted cross-unit
+   --     so the second instantiation's prefix resolves *locally* to the parent
+   --     instance and only its selector is a cross-unit reference to the child.
+   Put_Line ("Separate compilation of a child package of a generic package:");
+   declare
+      Client4     : constant Cursor := Lib.Add_Compilation ("Client4");
+      Tables_Stub : constant Cursor := Lib.Require ("Tables");
+      Sorted_Stub : constant Cursor := Lib.Require ("Tables.Sorted");
+
+      --  "package T_Inst is new Tables;" — a local instance of the generic parent
+      Parent_Inst : constant Cursor := Lib.Add_Child
+        (Client4, Diana.Builders.Package_Name
+                    (Spelling => SU.To_Unbounded_String ("T_Inst")));
+      Inst1_Ref   : constant Cursor := Lib.Add_Child
+        (Client4, Diana.Builders.Used_Name (Definition => Tables_Stub));
+      Inst1       : constant Cursor := Lib.Add_Child
+        (Client4, Diana.Builders.Generic_Instantiation (Generic_Unit => Inst1_Ref));
+
+      --  "package S_Inst is new T_Inst.Sorted;" — child of the parent INSTANCE
+      Prefix_Ref   : constant Cursor := Lib.Add_Child
+        (Client4, Diana.Builders.Used_Name (Definition => Parent_Inst));
+      Selector_Ref : constant Cursor := Lib.Add_Child
+        (Client4, Diana.Builders.Used_Name (Definition => Sorted_Stub));
+      Gen_Unit2    : constant Cursor := Lib.Add_Child
+        (Client4, Diana.Builders.Selected_Component
+                    (Prefix => Prefix_Ref, Selector => Selector_Ref));
+      Inst2        : constant Cursor := Lib.Add_Child
+        (Client4, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Unit2));
+
+      function Parent_Site return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst1).Generic_Unit);
+      function Sel return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst2).Generic_Unit);
+      function Inst_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Prefix);
+      function Child_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Selector);
+   begin
+      --  the parent generic and the child generic are cross-unit; the parent
+      --  instance prefix 'T_Inst' is local (no reference recorded for it).
+      Lib.Reference (Name => "Tables", Site => Parent_Site, Wanted => "Tables");
+      Lib.Reference (Name => "Tables.Sorted", Site => Child_Site, Wanted => "Sorted");
+      Put_Line ("    built 'Client4': package T_Inst is new Tables;");
+      Put_Line ("                     package S_Inst is new T_Inst.Sorted;");
+      Show_Resolution (Parent_Site, "Tables");
+      Show_Resolution (Inst_Site, "T_Inst", Detail => "a local parent instance");
+      Show_Resolution (Child_Site, "Sorted");
+
+      --  the child of a generic still needs its (generic) parent compiled first
+      Put_Line ("    merging child 'Tables.Sorted' before its parent ...");
+      begin
+         Lib.Merge (Name => "Tables.Sorted", Declared => "Sorted",
+                    Kind => Diana.Library.Generic_Package_Unit, Parent => "Tables");
+         Put_Line ("    (unexpected) child merged without its parent");
+      exception
+         when E : Diana.Library.Missing_Compilation =>
+            Put_Line ("    errored out as required: "
+                      & Ada.Exceptions.Exception_Message (E));
+      end;
+
+      --  merge the parent GENERIC, then the child generic beneath it
+      Put_Line ("    merging generic parent 'Tables', then child generic "
+                & "'Tables.Sorted' ...");
+      Lib.Merge (Name => "Tables", Declared => "Tables",
+                 Kind => Diana.Library.Generic_Package_Unit);
+      Lib.Merge (Name => "Tables.Sorted", Declared => "Sorted",
+                 Kind => Diana.Library.Generic_Package_Unit, Parent => "Tables");
+      Show_Resolution (Parent_Site, "Tables");
+      Show_Resolution (Inst_Site, "T_Inst", Detail => "a local parent instance");
+      Show_Resolution (Child_Site, "Sorted",
+                       Detail => "a child of generic Tables");
+
+      Lib.Require_All_Resolved;
+      Put_Line ("    all separate compilations present — "
+                & "child generic loaded beneath its generic parent.");
+   end;
 end Diana_Harness;
