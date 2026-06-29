@@ -212,6 +212,40 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("V")));
    By_2_Extras_Def   : constant Cursor :=
      Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("By_2_Extras")));
+   --  generic-formal-subprogram demo: the formal subprogram "Op" (+ its two
+   --  formal parameters), Fold's three parameters, two actual functions
+   --  "Plus"/"Times" (+ their parameters), and two instances.
+   Op_Def    : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Op")));
+   Op_X      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Op_Y      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   A_Par     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   B_Par     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   C_Par     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("C")));
+   Plus_Def  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Plus")));
+   Plus_X    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Plus_Y    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   Times_Def : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Times")));
+   Times_X   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Times_Y   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   --  (the Sum3 / Product3 instances are built below, near the Fold generic.)
+   --  subunit demo: "Area" (is separate) and its parameter "S".
+   Area_Def  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling    => SU.To_Unbounded_String ("Area"),
+                             Completion  => Add (B.Stub)));
+   Area_S    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -398,6 +432,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Object
              (Names => Add (B.Defining_Name_S (List => NL ([Name_Def]))),
               Mode  => Add (B.Generic_In))));
+   --  a "with function Designator (...) return ...;" generic formal subprogram.
+   function Generic_Sub_Formal (Designator, Header : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Subprogram
+             (Specification => Add (B.Subprogram_Declaration
+                (Designator => Designator, Header => Header)))));
    function Instance_Of (Generic_Def : Cursor; Actuals : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -1197,6 +1236,46 @@ procedure Interp_Demo is
          Print (Member_Call (By_2_Extras_Def, Boosted_Base_Def, [])),
          Print (Member_Call (By_2_Extras_Def, Scale_Twice_Def, [Lit (5)]))]);
 
+   --  generic
+   --     with function Op (X, Y : Integer) return Integer;
+   --  function Fold (A, B, C : Integer) return Integer is
+   --  begin return Op (Op (A, B), C); end;     -- folds Op left-to-right
+   Fold : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Fold"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Sub_Formal (Op_Def, Func_Spec ([In_Par (Op_X),
+                                                          In_Par (Op_Y)]))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (A_Par), In_Par (B_Par),
+                                       In_Par (C_Par)]))),
+             Completion    => Blk ([], [Ret (Sub_Call (Op_Def,
+               [Sub_Call (Op_Def, [Ref (A_Par), Ref (B_Par)]), Ref (C_Par)]))])));
+
+   --  function Sum3     is new Fold (Op => Plus);
+   --  function Product3 is new Fold (Op => Times);
+   Sum3 : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Sum3"),
+             Completion => Instance_Of
+               (Fold, [Add (B.Used_Name (Definition => Plus_Def))])));
+   Product3 : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Product3"),
+             Completion => Instance_Of
+               (Fold, [Add (B.Used_Name (Definition => Times_Def))])));
+
+   --  Put_Line (Sum3 (2, 3, 4));      -- ((2+3)+4) = 9
+   --  Put_Line (Product3 (2, 3, 4));  -- ((2*3)*4) = 24
+   Formal_Sub_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Sum3,     [Lit (2), Lit (3), Lit (4)])),
+           Print (Sub_Call (Product3, [Lit (2), Lit (3), Lit (4)]))]);
+
+   --  procedure Area (S : Integer) return Integer is separate;  -- completed below
+   --  Put_Line (Area (5));            -- 25, run from the subunit's body
+   Subunit_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Area_Def, [Lit (5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1531,6 +1610,39 @@ begin
                               [Sub_Call (Scale_Def, [Ref (ST_V)])]))]));
    Diana.Interpreter.Run (Child_Program);
 
+   --  Generic formal subprograms: a generic that takes a subprogram parameter,
+   --  instantiated with two different actual functions.
+   New_Line;
+   Put_Line ("Executing (generic formal subprograms):");
+   Put_Line ("    generic with function Op (X, Y : Integer) return Integer;");
+   Put_Line ("    function Fold (A, B, C : Integer) return Integer");
+   Put_Line ("       is begin return Op (Op (A, B), C); end;");
+   Put_Line ("    function Sum3 is new Fold (Plus); function Product3 is new Fold (Times);");
+   Put_Line ("    Put_Line (Sum3 (2, 3, 4)); Put_Line (Product3 (2, 3, 4));");
+   New_Line;
+   Put_Line ("Output:");
+   --  complete the actual functions the instances pass for Op
+   Complete (Plus_Def,  Func_Spec ([In_Par (Plus_X),  In_Par (Plus_Y)]),
+             Blk ([], [Ret (Bin (Op_Plus, Ref (Plus_X), Ref (Plus_Y)))]));
+   Complete (Times_Def, Func_Spec ([In_Par (Times_X), In_Par (Times_Y)]),
+             Blk ([], [Ret (Bin (Op_Mul, Ref (Times_X), Ref (Times_Y)))]));
+   Diana.Interpreter.Run (Formal_Sub_Program);
+
+   --  Subunits: a subprogram declared "is separate" whose body is supplied by a
+   --  subunit; once that body is in place, calling it runs the subunit's code.
+   New_Line;
+   Put_Line ("Executing (subunit body):");
+   Put_Line ("    function Area (S : Integer) return Integer is separate;");
+   Put_Line ("    separate (Demo) function Area (S : Integer) return Integer");
+   Put_Line ("       is begin return S * S; end;     -- the subunit's body");
+   Put_Line ("    Put_Line (Area (5));                -- 25, run from the subunit");
+   New_Line;
+   Put_Line ("Output:");
+   --  supply the subunit's body, completing the "is separate" stub in place
+   Complete (Area_Def, Func_Spec ([In_Par (Area_S)]),
+             Blk ([], [Ret (Bin (Op_Mul, Ref (Area_S), Ref (Area_S)))]));
+   Diana.Interpreter.Run (Subunit_Program);
+
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
    New_Line;
@@ -1614,6 +1726,20 @@ begin
    exception
       when E : Diana.Interpreter.Assertion_Error =>
          Put_Line ("    'Bad_Inc (A)' (X'Old+2) -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   declare
+      --  an "is separate" subprogram whose subunit was never supplied
+      Detached : constant Cursor :=
+        Add (B.Subprogram_Name (Spelling      => SU.To_Unbounded_String ("Detached"),
+                                Specification => Func_Spec ([]),
+                                Completion    => Add (B.Stub)));
+   begin
+      Diana.Interpreter.Run (Seq ([Print (Sub_Call (Detached, []))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Interpretation_Error =>
+         Put_Line ("    'Detached' (is separate) -> "
+                   & Ada.Exceptions.Exception_Message (E));
    end;
    begin
       Diana.Interpreter.Run                                       -- raise with no handler

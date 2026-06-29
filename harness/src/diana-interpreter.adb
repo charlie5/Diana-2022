@@ -35,10 +35,20 @@ package body Diana.Interpreter is
       Hash                => Ada.Strings.Hash,
       Equivalent_Elements => "=");
 
+   --  Generic formal subprograms: the formal's name -> the actual subprogram's
+   --  defining occurrence, bound in an instance's call scope.
+   package Cursor_Maps is new Ada.Containers.Indefinite_Hashed_Maps
+     (Key_Type        => String,
+      Element_Type    => Cursor,
+      Hash            => Ada.Strings.Hash,
+      Equivalent_Keys => "=",
+      "="             => Trees."=");
+
    type Scope is record
-      Bindings : Value_Maps.Map;
-      Subs     : Name_Sets.Set;        --  subprograms declared here (static link)
-      Parent   : Natural := 0;         --  enclosing scope index, 0 = none
+      Bindings    : Value_Maps.Map;
+      Subs        : Name_Sets.Set;     --  subprograms declared here (static link)
+      Formal_Subs : Cursor_Maps.Map;   --  generic formal subprogram -> actual
+      Parent      : Natural := 0;      --  enclosing scope index, 0 = none
    end record;
 
    package Scope_Vectors is new Ada.Containers.Vectors (Positive, Scope);
@@ -131,9 +141,10 @@ package body Diana.Interpreter is
    function Enter (Env : in out Environment; Parent : Natural) return Positive is
    begin
       Env.Scopes.Append
-        (Scope'(Bindings => Value_Maps.Empty_Map,
-                Subs     => Name_Sets.Empty_Set,
-                Parent   => Parent));
+        (Scope'(Bindings    => Value_Maps.Empty_Map,
+                Subs        => Name_Sets.Empty_Set,
+                Formal_Subs => Cursor_Maps.Empty_Map,
+                Parent      => Parent));
       return Env.Scopes.Last_Index;
    end Enter;
 
@@ -233,6 +244,22 @@ package body Diana.Interpreter is
       end loop;
       return Global_Scope;
    end Static_Link;
+
+   --  The actual subprogram bound to a generic formal subprogram Name, walking
+   --  out through the scope chain; No_Element if Name is not a formal subprogram.
+   function Lookup_Formal_Sub (Env : Environment; Current : Positive; Name : String)
+     return Cursor
+   is
+      I : Natural := Current;
+   begin
+      while I /= 0 loop
+         if Env.Scopes (I).Formal_Subs.Contains (Name) then
+            return Env.Scopes (I).Formal_Subs.Element (Name);
+         end if;
+         I := Env.Scopes (I).Parent;
+      end loop;
+      return No_Element;
+   end Lookup_Formal_Sub;
 
    --  ---- value helpers ------------------------------------------------------
    function Int  (V : Long_Long_Integer) return Static_Value
@@ -844,8 +871,8 @@ package body Diana.Interpreter is
       Copy_In   : Flag_Vectors.Vector;  --  in / in out: copy actual into formal
       Copy_Back : Flag_Vectors.Vector;  --  out / in out: copy formal back to actual
       Values    : Value_Vectors.Vector;
-      Gen_Formals : Node_List;        --  generic formal-object names (an instance)
-      Gen_Actuals : Node_List;        --  the instantiation's actual expressions
+      Gen_Formal_Nodes : Node_List;   --  generic formals (objects + subprograms)
+      Gen_Actuals      : Node_List;   --  the instantiation's actuals (parallel)
       Call      : Positive;
       Count     : Natural;
       Result    : Static_Value;
@@ -870,16 +897,12 @@ package body Diana.Interpreter is
             end if;
             Spec := As_Generic_Subprogram_Header (Gen_Spec).Profile;
             Comp := As_Generic_Name (Template).Completion;
+            --  collect the generic formals (objects and subprograms) in order,
+            --  parallel to the instantiation's positional actuals
             for F of As_Generic_Formal_S
                        (As_Generic_Name (Template).Formals).List
             loop
-               if Is_Generic_Formal_Object (F) then
-                  for Nm of As_Defining_Name_S
-                              (As_Generic_Formal_Object (F).Names).List
-                  loop
-                     Gen_Formals.Append (Nm);
-                  end loop;
-               end if;
+               Gen_Formal_Nodes.Append (F);
             end loop;
             for A of As_Association_S
                        (As_Generic_Instantiation (Inst).Associations).List
@@ -929,7 +952,10 @@ package body Diana.Interpreter is
       if Count /= Natural (Actuals_E.Length) then
          raise Interpretation_Error with "wrong number of arguments in call";
       end if;
-      if not Is_Block (Comp) then
+      if Is_Stub (Comp) then
+         raise Interpretation_Error with
+           "body of " & Name & " is separate — its subunit is not compiled";
+      elsif not Is_Block (Comp) then
          raise Interpretation_Error with "subprogram body is not available";
       end if;
 
@@ -952,14 +978,35 @@ package body Diana.Interpreter is
       end loop;
 
       --  bind the generic formals to the instantiation's actuals (for an
-      --  instance), evaluated in the caller's scope
-      if Natural (Gen_Formals.Length) /= Natural (Gen_Actuals.Length) then
+      --  instance): a formal object binds to the actual's value; a formal
+      --  subprogram binds (in Formal_Subs) to the actual subprogram, so calls
+      --  to the formal inside the template dispatch to it.  Evaluated/resolved
+      --  in the caller's scope.
+      if Natural (Gen_Formal_Nodes.Length) /= Natural (Gen_Actuals.Length) then
          Leave (Env, Call);
          raise Interpretation_Error with "wrong number of generic actuals in " & Name;
       end if;
-      for I in 1 .. Natural (Gen_Formals.Length) loop
-         Define (Env, Call, Spelling_Of (Gen_Formals (I)),
-                 Evaluate (Gen_Actuals (I), Env, Current));
+      for I in 1 .. Natural (Gen_Formal_Nodes.Length) loop
+         declare
+            F : constant Cursor := Gen_Formal_Nodes (I);
+            A : constant Cursor := Gen_Actuals (I);
+         begin
+            if Is_Generic_Formal_Object (F) then
+               Define (Env, Call,
+                       Spelling_Of (As_Defining_Name_S
+                         (As_Generic_Formal_Object (F).Names).List.First_Element),
+                       Evaluate (A, Env, Current));
+            elsif Is_Generic_Formal_Subprogram (F) then
+               Env.Scopes.Reference (Call).Formal_Subs.Include
+                 (Spelling_Of (As_Subprogram_Declaration
+                    (As_Generic_Formal_Subprogram (F).Specification).Designator),
+                  Definition_Of (A));
+            else
+               Leave (Env, Call);
+               raise Interpretation_Error with
+                 "unsupported generic formal in " & Name;
+            end if;
+         end;
       end loop;
 
       --  contract checks at entry: Pre, Contract_Cases guard selection, and
@@ -1348,6 +1395,9 @@ package body Diana.Interpreter is
             end if;
             declare
                Def : constant Cursor := Definition_Of (Prefix);
+               --  a call to a generic formal subprogram dispatches to its actual
+               Actual_Sub : constant Cursor :=
+                 Lookup_Formal_Sub (Env, Current, Spelling_Of (Def));
             begin
                if Spelling_Of (Def) = "Exception_Message" then
                   --  the message of the exception currently being handled
@@ -1355,6 +1405,8 @@ package body Diana.Interpreter is
                elsif Spelling_Of (Def) = "Exception_Name" then
                   --  the name of the exception currently being handled
                   return (Kind => String_Value, Text => Env.Handling);
+               elsif Actual_Sub /= No_Element then
+                  return Invoke (Actual_Sub, Args, Env, Current);
                elsif Is_Subprogram_Name (Def) then
                   return Invoke (Def, Args, Env, Current);
                else

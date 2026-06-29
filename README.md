@@ -111,12 +111,15 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   over a call stack, and nested subprograms that close over their enclosing
   activation (static links).
 - **Generics:** generic-subprogram instantiation — `function F is new G (Actuals)`
-  runs `G`'s body with its generic formal objects bound to the instance's actuals
-  — and generic packages: `package I is new G (Actuals)` elaborates `G`'s visible
-  declarations into a fresh instance scope (nestable in a block), with `I.Member`
-  and `I.Sub (...)` resolving through it; and child generic packages
-  (`package C is new I.Child (Actuals)`), whose instance nests in the parent
-  instance's scope so the child sees the parent's members by simple name.
+  runs `G`'s body with its generic formals bound to the instance's actuals (formal
+  **objects** to values, formal **subprograms** to actual subprograms that calls in
+  the template dispatch to) — and generic packages: `package I is new G (Actuals)`
+  elaborates `G`'s visible declarations into a fresh instance scope (nestable in a
+  block), with `I.Member` and `I.Sub (...)` resolving through it; and child generic
+  packages (`package C is new I.Child (Actuals)`), whose instance nests in the
+  parent instance's scope so the child sees the parent's members by simple name.
+- **Subunits:** a subprogram declared `is separate` raises until its subunit body
+  is supplied; once the stub is completed in place, calling it runs the subunit.
 - **Scoping:** a lexical scope chain; locals shadow outer names.
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,
