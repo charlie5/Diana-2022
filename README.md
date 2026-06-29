@@ -113,9 +113,10 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 - **Generics:** generic-subprogram instantiation — `function F is new G (Actuals)`
   runs `G`'s body with its generic formals bound to the instance's actuals (formal
   **objects** to values, formal **subprograms** to actual subprograms that calls in
-  the template dispatch to, and formal **types** erased — one body runs over each
-  actual type, e.g. `Are_Equal` instantiated for `Integer` and `String`) — and
-  generic packages: `package I is new G (Actuals)`
+  the template dispatch to, formal **types** erased — one body runs over each
+  actual type, e.g. `Are_Equal` instantiated for `Integer` and `String` — and
+  formal **packages** bound to an actual instance, so `P.Member` resolves through
+  it) — and generic packages: `package I is new G (Actuals)`
   elaborates `G`'s visible declarations into a fresh instance scope (nestable in a
   block), with `I.Member` and `I.Sub (...)` resolving through it; and child generic
   packages (`package C is new I.Child (Actuals)`), whose instance nests in the

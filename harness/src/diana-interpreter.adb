@@ -1005,6 +1005,13 @@ package body Diana.Interpreter is
                null;  --  a formal type is erased at runtime (values are
                       --  dynamically typed); the actual type name binds nothing,
                       --  it only consumes its positional actual slot.
+            elsif Is_Generic_Formal_Package (F) then
+               --  a formal package binds to the actual instance's value (a
+               --  Package_Value), so "P.Member" inside the template resolves
+               --  through the actual instance's scope.
+               Define (Env, Call,
+                       Spelling_Of (As_Generic_Formal_Package (F).Name),
+                       Evaluate (A, Env, Current));
             else
                Leave (Env, Call);
                raise Interpretation_Error with

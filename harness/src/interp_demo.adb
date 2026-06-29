@@ -258,6 +258,12 @@ procedure Interp_Demo is
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Integer")));
    String_Type  : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("String")));
+   --  generic-formal-package demo: a formal package "S" (any Scaler instance)
+   --  and Scale_Twice_Gen's parameter "X".
+   S_Formal : constant Cursor :=
+     Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("S")));
+   STG_X    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -453,6 +459,12 @@ procedure Interp_Demo is
    function Generic_Type_Formal (Name_Def : Cursor) return Cursor is
      (Add (B.Generic_Formal_Type_Declaration
              (Name => Name_Def, Definition => Add (B.Formal_Private_Type))));
+   --  a "with package Name is new Template (<>);" generic formal package.
+   function Generic_Pkg_Formal (Name_Def, Template_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Package
+             (Name     => Name_Def,
+              Template => Add (B.Used_Name (Definition => Template_Def)),
+              Is_Box   => True)));
    function Instance_Of (Generic_Def : Cursor; Actuals : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -1326,6 +1338,34 @@ procedure Interp_Demo is
            Print (Sub_Call (Str_Eq, [Str_Lit ("hi"), Str_Lit ("hi")])),
            Print (Sub_Call (Str_Eq, [Str_Lit ("hi"), Str_Lit ("bye")]))]);
 
+   --  generic
+   --     with package S is new Scaler (<>);   -- a formal package: any Scaler
+   --  function Scale_Twice_Gen (X : Integer) return Integer is
+   --  begin return S.Scale (S.Scale (X)); end;   -- uses the formal package's member
+   Scale_Twice_Gen : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Scale_Twice_Gen"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Pkg_Formal (S_Formal, Scaler)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (STG_X)]))),
+             Completion    => Blk ([], [Ret (Member_Call (S_Formal, Scale_Def,
+               [Member_Call (S_Formal, Scale_Def, [Ref (STG_X)])]))])));
+
+   --  function ST3 is new Scale_Twice_Gen (S => By_3);   -- By_3 is new Scaler (3)
+   ST3 : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("ST3"),
+             Completion => Instance_Of (Scale_Twice_Gen,
+               [Add (B.Used_Name (Definition => By_3_Def))])));
+
+   --  declare package By_3 is new Scaler (3);
+   --  begin Put_Line (ST3 (5)); end;     -- S.Scale (S.Scale (5)) = 5*3*3 = 45
+   Formal_Pkg_Program : constant Cursor :=
+     Block_Stmt
+       ([Pkg_Instance (By_3_Def, Scaler, [Lit (3)])],
+        [Print (Sub_Call (ST3, [Lit (5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1708,6 +1748,20 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Formal_Type_Program);
+
+   --  Generic formal packages: a generic parameterised by an instance of another
+   --  generic, using that instance's members (S.Scale) through the formal package.
+   New_Line;
+   Put_Line ("Executing (generic formal packages):");
+   Put_Line ("    generic with package S is new Scaler (<>);");
+   Put_Line ("    function Scale_Twice_Gen (X : Integer) return Integer");
+   Put_Line ("       is begin return S.Scale (S.Scale (X)); end;");
+   Put_Line ("    declare package By_3 is new Scaler (3);");
+   Put_Line ("            function ST3 is new Scale_Twice_Gen (By_3);");
+   Put_Line ("    begin Put_Line (ST3 (5)); end;   -- S.Scale (S.Scale (5)) = 5*3*3 = 45");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Formal_Pkg_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
