@@ -824,4 +824,108 @@ begin
                    & "subunit both completed.");
       end;
    end;
+   New_Line;
+
+   --  15. Separate compilation of a SUBUNIT OF A GRANDCHILD GENERIC PACKAGE.
+   --      'Hardware.Devices.Queue' is a generic grandchild (ancestors 'Hardware'
+   --      and 'Hardware.Devices' are packages), a three-unit chain; its body
+   --      carries "procedure Push is separate;", a subunit
+   --      'Hardware.Devices.Queue.Push' separately compiled and completed once
+   --      the whole chain is present.
+   Put_Line ("Separate compilation of a subunit of a grandchild generic package:");
+   declare
+      Client9    : constant Cursor := Lib.Add_Compilation ("Client9");
+      H_Stub     : constant Cursor := Lib.Require ("Hardware");
+      D_Stub     : constant Cursor := Lib.Require ("Hardware.Devices");
+      Q_Stub     : constant Cursor := Lib.Require ("Hardware.Devices.Queue");
+      H_Ref      : constant Cursor := Lib.Add_Child
+        (Client9, Diana.Builders.Used_Name (Definition => H_Stub));
+      D_Ref      : constant Cursor := Lib.Add_Child
+        (Client9, Diana.Builders.Used_Name (Definition => D_Stub));
+      Q_Ref      : constant Cursor := Lib.Add_Child
+        (Client9, Diana.Builders.Used_Name (Definition => Q_Stub));
+      Inner_Sel  : constant Cursor := Lib.Add_Child
+        (Client9, Diana.Builders.Selected_Component
+                    (Prefix => H_Ref, Selector => D_Ref));
+      Gen_Unit   : constant Cursor := Lib.Add_Child
+        (Client9, Diana.Builders.Selected_Component
+                    (Prefix => Inner_Sel, Selector => Q_Ref));
+      --  "package Q is new Hardware.Devices.Queue;"
+      Inst       : constant Cursor := Lib.Add_Child
+        (Client9, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Unit));
+
+      function Outer return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+      function Inner return Cursor is
+        (Diana.Accessors.As_Selected_Component (Outer).Prefix);
+      function Hardware_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Inner).Prefix);
+      function Devices_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Inner).Selector);
+      function Queue_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Outer).Selector);
+   begin
+      Lib.Reference (Name => "Hardware", Site => Hardware_Site,
+                     Wanted => "Hardware");
+      Lib.Reference (Name => "Hardware.Devices", Site => Devices_Site,
+                     Wanted => "Devices");
+      Lib.Reference (Name => "Hardware.Devices.Queue", Site => Queue_Site,
+                     Wanted => "Queue");
+      Put_Line ("    built 'Client9': package Q is new Hardware.Devices.Queue;");
+      Show_Resolution (Hardware_Site, "Hardware");
+      Show_Resolution (Devices_Site, "Devices");
+      Show_Resolution (Queue_Site, "Queue");
+
+      --  merge the chain top-down: package, package, then the grandchild generic
+      Put_Line ("    merging 'Hardware', 'Hardware.Devices', then grandchild "
+                & "generic 'Hardware.Devices.Queue' ...");
+      Lib.Merge (Name => "Hardware", Declared => "Hardware",
+                 Kind => Diana.Library.Package_Unit);
+      Lib.Merge (Name => "Hardware.Devices", Declared => "Devices",
+                 Kind => Diana.Library.Package_Unit, Parent => "Hardware");
+      Lib.Merge (Name => "Hardware.Devices.Queue", Declared => "Queue",
+                 Kind => Diana.Library.Generic_Package_Unit,
+                 Parent => "Hardware.Devices");
+      Show_Resolution (Queue_Site, "Queue",
+                       Detail => "a generic grandchild of Hardware");
+
+      --  the grandchild generic's body has "procedure Push is separate;"
+      declare
+         GC_Body   : constant Cursor :=
+           Lib.Require ("Hardware.Devices.Queue");  -- loaded grandchild generic
+         Push_Id   : constant Cursor := Lib.Add_Child
+           (GC_Body, Diana.Builders.Subprogram_Name
+                       (Spelling => SU.To_Unbounded_String ("Push")));
+         Stub_Node : constant Cursor := Lib.Add_Child (GC_Body, Diana.Builders.Stub);
+         Push_Body : constant Cursor := Lib.Add_Child
+           (GC_Body, Diana.Builders.Subprogram_Body
+                       (Designator => Push_Id, Completion => Stub_Node));
+      begin
+         Lib.Reference (Name => "Hardware.Devices.Queue.Push",
+                        Site => Push_Body, Wanted => "Push");
+         Put_Line ("    'Hardware.Devices.Queue' body has: procedure Push is separate;");
+         Show_Body_Status (Push_Body, "Push");
+
+         Put_Line ("    attempting to run with subunit "
+                   & "'Hardware.Devices.Queue.Push' missing ...");
+         begin
+            Lib.Require_All_Resolved;
+            Put_Line ("    (unexpected) library reported fully resolved");
+         exception
+            when E : Diana.Library.Missing_Compilation =>
+               Put_Line ("    errored out as required: "
+                         & Ada.Exceptions.Exception_Message (E));
+         end;
+
+         Put_Line ("    merging subunit 'Hardware.Devices.Queue.Push' of the "
+                   & "grandchild generic ...");
+         Lib.Merge_Subunit (Name   => "Hardware.Devices.Queue.Push",
+                            Parent => "Hardware.Devices.Queue");
+         Show_Body_Status (Push_Body, "Push");
+
+         Lib.Require_All_Resolved;
+         Put_Line ("    all separate compilations present — grandchild generic "
+                   & "and its subunit body both resolved.");
+      end;
+   end;
 end Diana_Harness;

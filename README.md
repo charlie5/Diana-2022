@@ -145,8 +145,11 @@ instantiation and its body's separate subunit is completed once present, and a
 generic loaded beneath its parent whose body's separate subunit is then completed,
 a **subunit of a nested generic package** (`Sessions.Pool.Evict`), where the
 nested generic is no unit of its own so its subunit completes a stub in the
-enclosing compilation, and a **subunit of a subunit** (`Driver.Run.Step`), where
-a merged subunit is itself a loaded unit whose own separate subunit is then completed.
+enclosing compilation, a **subunit of a subunit** (`Driver.Run.Step`), where
+a merged subunit is itself a loaded unit whose own separate subunit is then completed,
+and a **subunit of a grandchild generic package** (`Hardware.Devices.Queue.Push`), a
+generic grandchild three units deep whose body's separate subunit is completed once
+the chain is present.
 
 ## Harness requirements
 
