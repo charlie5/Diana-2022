@@ -38,16 +38,19 @@ package Diana is
    subtype Comments   is SU.Unbounded_String;   --  attached comments
    subtype Number_Rep is SU.Unbounded_String;   --  numeric-literal image
 
-   --  A static value (external rep of the IDL Value type / VAL_CLASS).
+   --  A static value (external rep of the IDL Value type / VAL_CLASS).  The
+   --  interpreter also uses this as its runtime value type; Access_Value is a
+   --  runtime-only addition (an address into the interpreter's heap; 0 = null).
    type Value_Kind is (No_Value, String_Value, Boolean_Value,
-                       Integer_Value, Real_Value);
+                       Integer_Value, Real_Value, Access_Value);
    type Static_Value (Kind : Value_Kind := No_Value) is record
       case Kind is
          when No_Value      => null;
-         when String_Value  => Text   : Symbol_Rep;
-         when Boolean_Value => Flag   : Boolean;
-         when Integer_Value => Whole  : Long_Long_Integer;
-         when Real_Value    => Number : Long_Long_Float;
+         when String_Value  => Text    : Symbol_Rep;
+         when Boolean_Value => Flag    : Boolean;
+         when Integer_Value => Whole   : Long_Long_Integer;
+         when Real_Value    => Number  : Long_Long_Float;
+         when Access_Value  => Address : Natural;
       end case;
    end record;
 

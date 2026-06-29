@@ -46,6 +46,7 @@ package body Diana.Interpreter is
    --  relevant construct (subprogram, loop, label) consumes it.
    type Environment is limited record
       Scopes       : Scope_Vectors.Vector;
+      Heap         : Value_Vectors.Vector;           --  allocated objects (1-based)
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
       Exiting      : Boolean      := False;          --  an exit is in progress
@@ -194,6 +195,11 @@ package body Diana.Interpreter is
                Real_IO.Put (Buffer, V.Number, Aft => 4, Exp => 0);
                return Ada.Strings.Fixed.Trim (Buffer, Ada.Strings.Both);
             end;
+         when Access_Value  =>
+            return (if V.Address = 0 then "null"
+                    else "access #"
+                         & Ada.Strings.Fixed.Trim
+                             (Natural'Image (V.Address), Ada.Strings.Both));
          when No_Value      => return "<no value>";
       end case;
    end Image;
@@ -321,6 +327,8 @@ package body Diana.Interpreter is
             return A.Flag = B.Flag;
          elsif A.Kind = String_Value and then B.Kind = String_Value then
             return SU."=" (A.Text, B.Text);
+         elsif A.Kind = Access_Value and then B.Kind = Access_Value then
+            return A.Address = B.Address;   --  same designated object (or both null)
          else
             raise Interpretation_Error with "incompatible operands in comparison";
          end if;
@@ -509,6 +517,35 @@ package body Diana.Interpreter is
       elsif Is_String_Literal (Expr) then
          return (Kind => String_Value,
                  Text => As_String_Literal (Expr).Literal_Image);
+
+      elsif Is_Null_Literal (Expr) then
+         return (Kind => Access_Value, Address => 0);          --  the null access
+
+      elsif Is_Qualified_Allocator (Expr) then                --  new T'(x)
+         declare
+            Designated : constant Static_Value :=
+              Evaluate (As_Qualified_Allocator (Expr).Value, Env, Current);
+         begin
+            Env.Heap.Append (Designated);
+            return (Kind => Access_Value, Address => Env.Heap.Last_Index);
+         end;
+
+      elsif Is_Subtype_Allocator (Expr) then                  --  new T (uninitialised)
+         Env.Heap.Append (Static_Value'(Kind => No_Value));
+         return (Kind => Access_Value, Address => Env.Heap.Last_Index);
+
+      elsif Is_Dereference (Expr) then                        --  name.all
+         declare
+            Acc : constant Static_Value :=
+              Evaluate (As_Dereference (Expr).Prefix, Env, Current);
+         begin
+            if Acc.Kind /= Access_Value then
+               raise Interpretation_Error with "dereference of a non-access value";
+            elsif Acc.Address = 0 then
+               raise Interpretation_Error with "dereference of null";
+            end if;
+            return Env.Heap.Element (Acc.Address);
+         end;
 
       elsif Is_Parenthesized_Expression (Expr) then
          return Evaluate (As_Parenthesized_Expression (Expr).Operand, Env, Current);
@@ -706,12 +743,24 @@ package body Diana.Interpreter is
 
       elsif Is_Assignment (Stmt) then
          declare
-            Target : constant String :=
-              Spelling_Of (Definition_Of (As_Assignment (Stmt).Target));
+            Target : constant Cursor := As_Assignment (Stmt).Target;
             Value  : constant Static_Value :=
               Evaluate (As_Assignment (Stmt).Source, Env, Current);
          begin
-            Assign (Env, Current, Target, Value);
+            if Is_Dereference (Target) then          --  name.all := Value
+               declare
+                  Acc : constant Static_Value :=
+                    Evaluate (As_Dereference (Target).Prefix, Env, Current);
+               begin
+                  if Acc.Kind /= Access_Value or else Acc.Address = 0 then
+                     raise Interpretation_Error with
+                       "assignment through a null or non-access value";
+                  end if;
+                  Env.Heap.Replace_Element (Acc.Address, Value);
+               end;
+            else
+               Assign (Env, Current, Spelling_Of (Definition_Of (Target)), Value);
+            end if;
          end;
 
       elsif Is_Procedure_Call (Stmt) then

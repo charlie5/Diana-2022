@@ -110,6 +110,11 @@ procedure Interp_Demo is
      Add (B.Loop_Block_Name (Spelling => SU.To_Unbounded_String ("Outer")));
    Again_Label : constant Cursor :=
      Add (B.Statement_Label_Name (Spelling => SU.To_Unbounded_String ("Again")));
+   --  access-value demo: two pointers that alias the same heap object.
+   P_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("P")));
+   Q_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Q")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -278,6 +283,16 @@ procedure Interp_Demo is
              (Labels    => Add (B.Defining_Name_S (List => NL ([Label_Def]))),
               Statement => Statement)));
 
+   --  access values: "new Integer'(V)", "name.all", "null", and an assignment
+   --  to an arbitrary target (e.g. a dereference).
+   function New_Int (V : Integer) return Cursor is
+     (Add (B.Qualified_Allocator (Value => Lit (V))));
+   function Deref (Acc : Cursor) return Cursor is
+     (Add (B.Dereference (Prefix => Acc)));
+   function Null_Acc return Cursor is (Add (B.Null_Literal));
+   function Assign_To (Target, Source : Cursor) return Cursor is
+     (Add (B.Assignment (Target => Target, Source => Source)));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -427,6 +442,15 @@ procedure Interp_Demo is
                     Seq ([Goto_Stmt (Again_Label)])),
            Print (Ref (N_Def))]);                                          -- 3
 
+   --  P := new Integer'(10);  Q := P;  P.all := 42;
+   --  Put_Line (Q.all);  Put_Line (P = Q);     -- Q aliases P -> 42, then True
+   Access_Program : constant Cursor :=
+     Seq ([Assign (P_Def, New_Int (10)),
+           Assign (Q_Def, Ref (P_Def)),
+           Assign_To (Deref (Ref (P_Def)), Lit (42)),
+           Print (Deref (Ref (Q_Def))),                                    -- 42
+           Print (Bin (Op_Eq, Ref (P_Def), Ref (Q_Def)))]);               -- True
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -542,20 +566,35 @@ begin
    Put_Line ("Output:");
    Diana.Interpreter.Run (Goto_Program);
 
-   --  The execute-or-error requirement: running a use of an unbound variable
-   --  must fail rather than produce a wrong answer.
+   --  Access values: allocation, aliasing, dereference, assignment through a
+   --  dereference, and access equality.
    New_Line;
-   Put_Line ("Error path — executing 'Put_Line (Undefined);':");
+   Put_Line ("Executing (access values):");
+   Put_Line ("    P := new Integer'(10); Q := P; P.all := 42;");
+   Put_Line ("    Put_Line (Q.all);  Put_Line (P = Q);    -- Q aliases P");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Access_Program);
+
+   --  The execute-or-error requirement: an unbound variable and a null
+   --  dereference must both fail rather than produce a wrong answer.
+   New_Line;
+   Put_Line ("Error paths:");
    declare
       Undef : constant Cursor :=
         Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Undefined")));
-      Bad   : constant Cursor := Seq ([Print (Ref (Undef))]);
    begin
-      Diana.Interpreter.Run (Bad);
+      Diana.Interpreter.Run (Seq ([Print (Ref (Undef))]));     -- Put_Line (Undefined)
       Put_Line ("    (unexpected) completed without error");
    exception
       when E : Diana.Interpreter.Interpretation_Error =>
-         Put_Line ("    errored out as required: "
-                   & Ada.Exceptions.Exception_Message (E));
+         Put_Line ("    'Put_Line (Undefined)' -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run (Seq ([Print (Deref (Null_Acc))]));  -- Put_Line (null.all)
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Interpretation_Error =>
+         Put_Line ("    'Put_Line (null.all)'  -> " & Ada.Exceptions.Exception_Message (E));
    end;
 end Interp_Demo;
