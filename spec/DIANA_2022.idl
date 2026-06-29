@@ -581,10 +581,14 @@ Structure DIANA_2022 Root Diana_Node Is
     Case_Statement =>
           Selector     : Expression,
           Alternatives : Alternative_S;
-    Alternative ::= Case_Alternative | Alternative_Pragma;
+    Alternative ::= Case_Alternative | Alternative_Pragma | Exception_Handler;
     Case_Alternative =>
           Choices    : Choice_S,
           Statements : Statement_S;
+    Exception_Handler =>                          -- [Ada 22 RM 11.2]  (in a Block)
+          Choice_Parameter : Defining_Occurrence,  -- structural ("E :"; Void if absent)
+          Choices          : Choice_S,             -- the exception_choices / others
+          Statements       : Statement_S;
 
     Loop_Statement =>
           Iteration  : Iteration,

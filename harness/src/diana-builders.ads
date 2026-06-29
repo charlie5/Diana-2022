@@ -1549,6 +1549,19 @@ package Diana.Builders is
        Comments => Comments,
        Pragma_Item => Pragma_Item);
 
+   function Exception_Handler
+     (Source_Position  : Diana.Source_Position := No_Position;
+      Comments         : Diana.Comments := SU.Null_Unbounded_String;
+      Choice_Parameter : Cursor := No_Element;
+      Choices          : Cursor := No_Element;
+      Statements       : Cursor := No_Element)
+      return Diana.Nodes.Exception_Handler
+   is (Source_Position => Source_Position,
+       Comments => Comments,
+       Choice_Parameter => Choice_Parameter,
+       Choices => Choices,
+       Statements => Statements);
+
    function No_Iteration
      (Source_Position : Diana.Source_Position := No_Position;
       Comments        : Diana.Comments := SU.Null_Unbounded_String)

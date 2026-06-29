@@ -10,7 +10,7 @@ harness.
 spec:
 
 ```sh
-perl tools/gen_nodes.pl > harness/src/diana-nodes.ads   # 435 tagged types
+perl tools/gen_nodes.pl > harness/src/diana-nodes.ads   # 436 tagged types
 ```
 
 Mapping (see the script header for detail): each IDL class (`::=`) becomes an
@@ -30,8 +30,8 @@ marked generated — do not edit it by hand.
 packages of expression functions):
 
 ```sh
-perl tools/gen_api.pl builders  > harness/src/diana-builders.ads   # 353 ctors
-perl tools/gen_api.pl accessors > harness/src/diana-accessors.ads  # 435 types
+perl tools/gen_api.pl builders  > harness/src/diana-builders.ads   # 354 ctors
+perl tools/gen_api.pl accessors > harness/src/diana-accessors.ads  # 436 types
 ```
 
 `Diana.Builders` has one value constructor per concrete node, taking every

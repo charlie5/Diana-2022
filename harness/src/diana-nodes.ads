@@ -3,7 +3,7 @@
 --  GENERATED from spec/DIANA_2022.idl by tools/gen_nodes.pl.  DO NOT EDIT BY
 --  HAND; re-run the generator after changing the spec.
 --
---  435 tagged types (82 abstract classes, 353 concrete nodes).  Every IDL
+--  436 tagged types (82 abstract classes, 354 concrete nodes).  Every IDL
 --  class is an abstract type and every IDL node a concrete leaf, single-parent
 --  per the spec; node/class references are Cursors and "Seq Of" is a Node_List.
 --  See tools/gen_nodes.pl for the full mapping.
@@ -527,6 +527,11 @@ package Diana.Nodes is
    end record;
    type Alternative_Pragma is new Alternative with record
       Pragma_Item : Cursor := No_Element;
+   end record;
+   type Exception_Handler is new Alternative with record
+      Choice_Parameter : Cursor := No_Element;
+      Choices          : Cursor := No_Element;
+      Statements       : Cursor := No_Element;
    end record;
    type Iteration is abstract new Node with null record;
    type No_Iteration is new Iteration with null record;

@@ -40,7 +40,7 @@ tools/
 harness/
   diana_harness.gpr             GNAT project (builds both demos)
   src/diana.ads                 foundation: the node root + the library tree
-  src/diana-nodes.ads           GENERATED: the full node set (435 tagged types)
+  src/diana-nodes.ads           GENERATED: the full node set (436 tagged types)
   src/diana-builders.ads        GENERATED: a value constructor per node
   src/diana-accessors.ads       GENERATED: Is_T / As_T per type
   src/diana-loading.ads         library bookkeeping nodes (not part of the IR)
@@ -101,7 +101,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (with the Ada 2022 `when` filter), `case`, block statements with local
   declarations, `exit` (incl. named), `goto` + labels, `raise` + exception
-  handlers, `Put_Line`.
+  handlers (incl. `when E : ...` occurrence parameters, bare re-raise, and
+  `Exception_Name`/`Exception_Message`), `Put_Line`.
 - **Subprograms:** `in` / `out` / `in out` parameters with copy-back, recursion
   over a call stack, and nested subprograms that close over their enclosing
   activation (static links).

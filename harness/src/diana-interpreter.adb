@@ -529,11 +529,21 @@ package body Diana.Interpreter is
 
    --  Elaborate a Block's declarations into Scope_Index, then run its
    --  statements there (used for both block statements and subprogram bodies).
-   --  Does an exception handler ("when E1 | E2 | others => ...") catch the
-   --  exception named Exception_Name?
+   --  A handler is either an Exception_Handler ("when E : ... =>", carrying a
+   --  choice parameter) or a plain Case_Alternative ("when ... =>").  Its parts:
+   function Handler_Choices (Alt : Cursor) return Cursor is
+     (if Is_Exception_Handler (Alt) then As_Exception_Handler (Alt).Choices
+      else As_Case_Alternative (Alt).Choices);
+   function Handler_Statements (Alt : Cursor) return Cursor is
+     (if Is_Exception_Handler (Alt) then As_Exception_Handler (Alt).Statements
+      else As_Case_Alternative (Alt).Statements);
+   function Is_Handler (Alt : Cursor) return Boolean is
+     (Is_Exception_Handler (Alt) or else Is_Case_Alternative (Alt));
+
+   --  Does a handler ("when E1 | E2 | others => ...") catch Exception_Name?
    function Handler_Matches (Alt : Cursor; Exception_Name : String) return Boolean is
    begin
-      for C of As_Choice_S (As_Case_Alternative (Alt).Choices).List loop
+      for C of As_Choice_S (Handler_Choices (Alt)).List loop
          if Is_Others_Choice (C) then
             return True;
          elsif Is_Choice_Expression (C)
@@ -569,9 +579,10 @@ package body Diana.Interpreter is
             Name : constant String := SU.To_String (Env.Raised);
          begin
             for Alt of As_Alternative_S (Handlers).List loop
-               if Is_Case_Alternative (Alt) and then Handler_Matches (Alt, Name) then
+               if Is_Handler (Alt) and then Handler_Matches (Alt, Name) then
                   --  enter the handler: record the exception being handled (for
-                  --  a bare "raise;" and Exception_Message), saving the outer one
+                  --  a bare "raise;", Exception_Message, Exception_Name, and the
+                  --  "when E : ..." choice parameter), saving the outer one
                   declare
                      Saved_Handling : constant Symbol_Rep := Env.Handling;
                      Saved_Message  : constant Symbol_Rep := Env.Handling_Msg;
@@ -579,7 +590,7 @@ package body Diana.Interpreter is
                      Env.Handling     := Env.Raised;
                      Env.Handling_Msg := Env.Raised_Msg;
                      Env.Raising := False;
-                     Execute (As_Case_Alternative (Alt).Statements, Env, Scope_Index);
+                     Execute (Handler_Statements (Alt), Env, Scope_Index);
                      Env.Handling     := Saved_Handling;
                      Env.Handling_Msg := Saved_Message;
                   end;
@@ -1118,6 +1129,9 @@ package body Diana.Interpreter is
                if Spelling_Of (Def) = "Exception_Message" then
                   --  the message of the exception currently being handled
                   return (Kind => String_Value, Text => Env.Handling_Msg);
+               elsif Spelling_Of (Def) = "Exception_Name" then
+                  --  the name of the exception currently being handled
+                  return (Kind => String_Value, Text => Env.Handling);
                elsif Is_Subprogram_Name (Def) then
                   return Invoke (Def, Args, Env, Current);
                else

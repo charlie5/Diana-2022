@@ -153,6 +153,8 @@ procedure Interp_Demo is
      Add (B.Exception_Name (Spelling => SU.To_Unbounded_String ("My_Error")));
    ExcMsg_Name : constant Cursor :=
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Exception_Message")));
+   ExcName_Name : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Exception_Name")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -500,6 +502,23 @@ procedure Interp_Demo is
      (Add (B.Function_Call
              (Prefix  => Add (B.Used_Name (Definition => ExcMsg_Name)),
               Actuals => Add (B.Association_S))));
+
+   --  "Builtin (Occ)" -- Exception_Name / Exception_Message of an occurrence.
+   function Exc_Attr (Builtin_Def, Occ : Cursor) return Cursor is
+     (Add (B.Function_Call
+             (Prefix  => Add (B.Used_Name (Definition => Builtin_Def)),
+              Actuals => Add (B.Association_S (List => NL
+                ([Add (B.Positional_Association
+                         (Value => Add (B.Used_Object (Definition => Occ))))]))))));
+
+   --  "when Occ : Exc => Stmts" -- a handler with a choice (occurrence) parameter.
+   function Exc_Handler (Occ, Exc_Def, Stmts : Cursor) return Cursor is
+     (Add (B.Exception_Handler
+             (Choice_Parameter => Occ,
+              Choices => Add (B.Choice_S (List => NL
+                ([Add (B.Choice_Expression
+                         (Value => Add (B.Used_Name (Definition => Exc_Def))))]))),
+              Statements => Stmts)));
 
    --  The summation program (no calls).
    Program : constant Cursor :=
@@ -895,6 +914,17 @@ procedure Interp_Demo is
             [Handler (My_Error, Seq ([Print (Exc_Msg), Re_Raise]))])],
         [Handler (My_Error, Seq ([Print (Lit (99))]))]);
 
+   --  begin raise My_Error with "details";
+   --  exception when E : My_Error =>
+   --     Put_Line (Exception_Name (E)); Put_Line (Exception_Message (E)); end;
+   Occurrence_Program : constant Cursor :=
+     Block_With
+       ([],
+        [Raise_Exc (My_Error, Str_Lit ("details"))],
+        [Exc_Handler (E_Def, My_Error,
+           Seq ([Print (Exc_Attr (ExcName_Name, E_Def)),
+                 Print (Exc_Attr (ExcMsg_Name, E_Def))]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1142,6 +1172,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Reraise_Program);
+
+   --  Exception occurrence parameter: "when E : Exc =>" with Exception_Name (E)
+   --  and Exception_Message (E).
+   New_Line;
+   Put_Line ("Executing (when E : ... occurrence parameter):");
+   Put_Line ("    begin raise My_Error with ""details"";");
+   Put_Line ("    exception when E : My_Error =>");
+   Put_Line ("       Put_Line (Exception_Name (E)); Put_Line (Exception_Message (E)); end;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Occurrence_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

@@ -808,6 +808,11 @@ package Diana.Accessors is
    function As_Alternative_Pragma (C : Cursor) return Diana.Nodes.Alternative_Pragma'Class
      is (Diana.Nodes.Alternative_Pragma'Class (Trees.Element (C)));
 
+   function Is_Exception_Handler (C : Cursor) return Boolean
+     is (Trees.Element (C) in Diana.Nodes.Exception_Handler'Class);
+   function As_Exception_Handler (C : Cursor) return Diana.Nodes.Exception_Handler'Class
+     is (Diana.Nodes.Exception_Handler'Class (Trees.Element (C)));
+
    function Is_Iteration (C : Cursor) return Boolean
      is (Trees.Element (C) in Diana.Nodes.Iteration'Class);
    function As_Iteration (C : Cursor) return Diana.Nodes.Iteration'Class
