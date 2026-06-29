@@ -21,13 +21,30 @@ The **spec is substantially complete** and the **interpretive harness has been s
 
 ## Building & running the harness
 
-The harness is an Ada 2022 / GNAT project under `harness/`:
+The harness is an Ada 2022 / GNAT project under `harness/`. The root `Makefile`
+wires the whole pipeline; **`make check`** is the one-command verification (spec
+invariants → generated files in sync with the spec → `gprbuild` → run both
+demos), and is the thing to run after any change:
+
+```sh
+make check    # spec checkers + generated-file sync + build + run both demos
+make build    # just gprbuild (both demos)
+make run      # run harness/diana_harness and harness/interp_demo
+make gen      # re-generate diana-nodes/builders/accessors after a spec change
+```
+
+Or directly:
 
 ```sh
 gprbuild -P harness/diana_harness.gpr   # build both demos (object dir harness/obj)
 harness/diana_harness                   # the separate-compilation + builder/accessor demo
 harness/interp_demo                     # build a small program and execute it (the interpreter)
 ```
+
+`make check`'s `verify-gen` re-runs the generators and diffs against the
+committed `diana-nodes.ads` / `diana-builders.ads` / `diana-accessors.ads`, so a
+spec edit without `make gen` (or a hand-edit of a generated file) fails the
+check.
 
 Architecture (decided with Shark8 — see the header of `harness/src/diana.ads`):
 - The whole program library is **one** `Ada.Containers.Indefinite_Multiway_Trees` of `Diana.Node'Class`. Parent/child edges are the *structural* attributes; the tree root's children are per-compilation subtrees.
