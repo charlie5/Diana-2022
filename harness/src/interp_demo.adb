@@ -61,6 +61,12 @@ procedure Interp_Demo is
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Fact")));
    N_Param  : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
+   --  Two distinct defining occurrences, both spelled "X": a global and a
+   --  block-local that shadows it.
+   X_Global : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("X")));
+   X_Local  : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("X")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -102,11 +108,11 @@ procedure Interp_Demo is
               Statements => Body_Seq)));
 
    function Print (Arg : Cursor) return Cursor is
+      Actual : constant Cursor := Add (B.Positional_Association (Value => Arg));
    begin
       return Add (B.Procedure_Call
                     (Prefix  => Add (B.Used_Name (Definition => Put_Def)),
-                     Actuals => Add (B.Association_S
-                                       (List => NL ([Add (B.Positional_Association (Value => Arg))])))));
+                     Actuals => Add (B.Association_S (List => NL ([Actual])))));
    end Print;
 
    --  A call to a user subprogram Def with the given actuals.
@@ -133,6 +139,19 @@ procedure Interp_Demo is
                   ([Add (B.Conditional_Clause (Condition  => Condition,
                                                Statements => Then_Seq)),
                     Add (B.Conditional_Clause (Statements => Else_Seq))]))))));
+
+   --  "Definition : <type> := Init;" object declaration.
+   function Var_Decl (Definition, Init : Cursor) return Cursor is
+     (Add (B.Variable_Declaration
+             (Names          => Add (B.Defining_Name_S (List => NL ([Definition]))),
+              Initialization => Init)));
+
+   --  "declare <Decls> begin <Stmts> end;" block statement.
+   function Block_Stmt (Decls, Stmts : Cursor_Array) return Cursor is
+     (Add (B.Block_Statement
+             (Block => Add (B.Block
+               (Declarations => Add (B.Item_S (List => NL (Decls))),
+                Statements   => Add (B.Statement_S (List => NL (Stmts))))))));
 
    --  The summation program (no calls).
    Program : constant Cursor :=
@@ -163,6 +182,13 @@ procedure Interp_Demo is
    --  Put_Line (Fact (5));   -- expects 120
    Fact_Program : constant Cursor :=
      Seq ([Print (Sub_Call (Fact_Def, [Lit (5)]))]);
+
+   --  X := 100;  declare X : Integer := 7; begin Put_Line (X); end;  Put_Line (X);
+   Scope_Program : constant Cursor :=
+     Seq ([Assign (X_Global, Lit (100)),
+           Block_Stmt ([Var_Decl (X_Local, Lit (7))],
+                       [Print (Ref (X_Local))]),
+           Print (Ref (X_Global))]);
 
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
@@ -196,6 +222,17 @@ begin
    Put_Line ("Output:");
    Program_Tree.Update_Element (Fact_Def, Define_Fact'Access);  -- complete Fact's stub
    Diana.Interpreter.Run (Fact_Program);
+
+   --  Lexically-scoped local declaration: a block-local shadows a global, and
+   --  the global is unchanged after the block exits.
+   New_Line;
+   Put_Line ("Executing (lexically-scoped local declaration):");
+   Put_Line ("    X := 100;");
+   Put_Line ("    declare X : Integer := 7; begin Put_Line (X); end;  -- local shadows");
+   Put_Line ("    Put_Line (X);                                       -- global unchanged");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Scope_Program);
 
    --  The execute-or-error requirement: running a use of an unbound variable
    --  must fail rather than produce a wrong answer.

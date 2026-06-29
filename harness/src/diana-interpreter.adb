@@ -8,64 +8,86 @@ package body Diana.Interpreter is
 
    use type Trees.Cursor;
 
-   --  ---- the call stack -----------------------------------------------------
-   --  Each call has a frame: its local/parameter bindings (keyed by defining-
-   --  occurrence spelling, unique in this slice), plus a return slot.  Frame 1
-   --  is the global frame.  Name lookup tries the top frame, then the globals.
+   --  ---- scopes and the scope chain -----------------------------------------
+   --  Names are resolved lexically: each scope holds its own bindings (keyed by
+   --  defining-occurrence spelling) and points at its enclosing scope.  Scopes
+   --  live in one vector and are referred to by index; index 1 is the global
+   --  scope (Parent 0).  A block / subprogram call pushes a scope and pops it on
+   --  exit, so the vector is a stack and the Parent links give lexical nesting.
    package Value_Maps is new Ada.Containers.Indefinite_Hashed_Maps
      (Key_Type        => String,
       Element_Type    => Static_Value,
       Hash            => Ada.Strings.Hash,
       Equivalent_Keys => "=");
 
-   type Frame is record
+   type Scope is record
       Bindings : Value_Maps.Map;
-      Returned : Boolean       := False;
-      Result   : Static_Value  := (Kind => No_Value);
+      Parent   : Natural := 0;        --  enclosing scope index, 0 = none
    end record;
 
-   function Empty_Frame return Frame is
-     (Bindings => Value_Maps.Empty_Map, Returned => False,
-      Result   => (Kind => No_Value));
-
-   package Frame_Vectors is new Ada.Containers.Vectors (Positive, Frame);
+   package Scope_Vectors is new Ada.Containers.Vectors (Positive, Scope);
    package Value_Vectors is new Ada.Containers.Vectors (Positive, Static_Value);
 
+   Global_Scope : constant Positive := 1;
+
    type Environment is limited record
-      Frames : Frame_Vectors.Vector;
+      Scopes       : Scope_Vectors.Vector;
+      Returning    : Boolean      := False;          --  a return is in progress
+      Return_Value : Static_Value := (Kind => No_Value);
    end record;
 
-   function Top (Env : Environment) return Positive is (Env.Frames.Last_Index);
-   function Has_Returned (Env : Environment) return Boolean
-     is (Env.Frames (Env.Frames.Last_Index).Returned);
-
-   --  Read a name: top frame first, then the globals (frame 1).
-   function Lookup (Env : Environment; Name : String) return Static_Value is
+   --  Push a fresh scope whose enclosing scope is Parent; return its index.
+   function Enter (Env : in out Environment; Parent : Natural) return Positive is
    begin
-      if Env.Frames (Top (Env)).Bindings.Contains (Name) then
-         return Env.Frames (Top (Env)).Bindings.Element (Name);
-      elsif Env.Frames (1).Bindings.Contains (Name) then
-         return Env.Frames (1).Bindings.Element (Name);
-      else
-         raise Interpretation_Error with "unbound variable: " & Name;
-      end if;
+      Env.Scopes.Append (Scope'(Bindings => Value_Maps.Empty_Map, Parent => Parent));
+      return Env.Scopes.Last_Index;
+   end Enter;
+
+   --  Pop every scope from Down_To upward (LIFO unwinding).
+   procedure Leave (Env : in out Environment; Down_To : Positive) is
+   begin
+      while not Env.Scopes.Is_Empty and then Env.Scopes.Last_Index >= Down_To loop
+         Env.Scopes.Delete_Last;
+      end loop;
+   end Leave;
+
+   procedure Define (Env : in out Environment; Scope_Index : Positive;
+                     Name : String; Value : Static_Value) is
+   begin
+      Env.Scopes.Reference (Scope_Index).Bindings.Include (Name, Value);
+   end Define;
+
+   --  Read a name, walking out through the lexical chain from Current.
+   function Lookup (Env : Environment; Current : Positive; Name : String)
+     return Static_Value
+   is
+      I : Natural := Current;
+   begin
+      while I /= 0 loop
+         if Env.Scopes (I).Bindings.Contains (Name) then
+            return Env.Scopes (I).Bindings.Element (Name);
+         end if;
+         I := Env.Scopes (I).Parent;
+      end loop;
+      raise Interpretation_Error with "unbound variable: " & Name;
    end Lookup;
 
-   --  Assign a name: update where it is already bound (top frame, else the
-   --  globals), otherwise introduce it in the top frame.
-   procedure Bind (Env : in out Environment; Name : String; Value : Static_Value)
+   --  Assign a name: update it in the innermost scope that declares it; if no
+   --  scope declares it, introduce it in the global scope (an implicit global).
+   procedure Assign (Env : in out Environment; Current : Positive;
+                     Name : String; Value : Static_Value)
    is
-      T : constant Positive := Top (Env);
+      I : Natural := Current;
    begin
-      if not Env.Frames (T).Bindings.Contains (Name)
-        and then T /= 1
-        and then Env.Frames (1).Bindings.Contains (Name)
-      then
-         Env.Frames.Reference (1).Bindings.Include (Name, Value);
-      else
-         Env.Frames.Reference (T).Bindings.Include (Name, Value);
-      end if;
-   end Bind;
+      while I /= 0 loop
+         if Env.Scopes (I).Bindings.Contains (Name) then
+            Define (Env, I, Name, Value);
+            return;
+         end if;
+         I := Env.Scopes (I).Parent;
+      end loop;
+      Define (Env, Global_Scope, Name, Value);
+   end Assign;
 
    --  ---- value helpers ------------------------------------------------------
    function Int  (V : Long_Long_Integer) return Static_Value
@@ -123,21 +145,65 @@ package body Diana.Interpreter is
       end if;
    end Definition_Of;
 
-   --  ---- the evaluator / executor / caller (mutually recursive) -------------
-   function Evaluate (Expr : Cursor; Env : in out Environment) return Static_Value;
-   procedure Execute (Stmt : Cursor; Env : in out Environment);
+   --  ---- evaluator / executor / caller (mutually recursive) -----------------
+   function Evaluate (Expr : Cursor; Env : in out Environment; Current : Positive)
+     return Static_Value;
+   procedure Execute (Stmt : Cursor; Env : in out Environment; Current : Positive);
    function Invoke (Definition : Cursor; Actuals : Node_List;
-                    Env : in out Environment) return Static_Value;
+                    Env : in out Environment; Current : Positive) return Static_Value;
 
-   function Apply (Op : Cursor; Args : Node_List; Env : in out Environment)
-     return Static_Value
+   --  Elaborate object declarations (variables / constants) into Scope_Index,
+   --  evaluating their initialisers; other declaration kinds are ignored here.
+   procedure Elaborate (Decls : Node_List; Env : in out Environment;
+                        Scope_Index : Positive)
+   is
+      procedure Declare_Objects (Names, Init : Cursor) is
+         Value : Static_Value := (Kind => No_Value);
+      begin
+         if Init /= No_Element and then not Is_Void (Init) then
+            Value := Evaluate (Init, Env, Scope_Index);
+         end if;
+         for Nm of As_Defining_Name_S (Names).List loop
+            Define (Env, Scope_Index, Spelling_Of (Nm), Value);
+         end loop;
+      end Declare_Objects;
+   begin
+      for D of Decls loop
+         if Is_Variable_Declaration (D) then
+            Declare_Objects (As_Variable_Declaration (D).Names,
+                             As_Variable_Declaration (D).Initialization);
+         elsif Is_Constant_Declaration (D) then
+            Declare_Objects (As_Constant_Declaration (D).Names,
+                             As_Constant_Declaration (D).Initialization);
+         end if;
+      end loop;
+   end Elaborate;
+
+   --  Elaborate a Block's declarations into Scope_Index, then run its
+   --  statements there (used for both block statements and subprogram bodies).
+   procedure Run_Block_In (Block_Cursor : Cursor; Env : in out Environment;
+                           Scope_Index : Positive)
+   is
+      Declarations : constant Cursor := As_Block (Block_Cursor).Declarations;
+      Statements   : constant Cursor := As_Block (Block_Cursor).Statements;
+   begin
+      if Declarations /= No_Element and then Is_Item_S (Declarations) then
+         Elaborate (As_Item_S (Declarations).List, Env, Scope_Index);
+      end if;
+      if Statements /= No_Element and then Is_Statement_S (Statements) then
+         Execute (Statements, Env, Scope_Index);
+      end if;
+   end Run_Block_In;
+
+   function Apply (Op : Cursor; Args : Node_List; Env : in out Environment;
+                   Current : Positive) return Static_Value
    is
       function Operand (I : Positive) return Static_Value is
       begin
          if I > Natural (Args.Length) then
             raise Interpretation_Error with "operator: missing operand";
          end if;
-         return Evaluate (As_Positional_Association (Args (I)).Value, Env);
+         return Evaluate (As_Positional_Association (Args (I)).Value, Env, Current);
       end Operand;
    begin
       if    Is_Op_Unary_Minus (Op) then return Int (-Whole_Of (Operand (1)));
@@ -173,17 +239,17 @@ package body Diana.Interpreter is
       end;
    end Apply;
 
-   --  Call a user-defined subprogram: bind actuals to formals in a fresh
-   --  frame, run the body block, and return its result (No_Value for a
-   --  procedure).  Recursion just nests frames on the stack.
+   --  Call a user-defined subprogram.  The call scope's lexical parent is the
+   --  global scope (top-level subprogram); recursion nests fresh call scopes.
    function Invoke (Definition : Cursor; Actuals : Node_List;
-                    Env : in out Environment) return Static_Value
+                    Env : in out Environment; Current : Positive) return Static_Value
    is
       Spec    : constant Cursor := As_Subprogram_Name (Definition).Specification;
       Comp    : constant Cursor := As_Subprogram_Name (Definition).Completion;
       Params  : Node_List;
-      Formals : Node_List;             --  formal-parameter defining names, in order
-      Values  : Value_Vectors.Vector;  --  actuals, evaluated in the caller's scope
+      Formals : Node_List;
+      Values  : Value_Vectors.Vector;
+      Call    : Positive;
       Result  : Static_Value;
    begin
       if    Is_Procedure_Header (Spec) then
@@ -209,33 +275,35 @@ package body Diana.Interpreter is
          end;
       end loop;
 
+      --  actuals are evaluated in the caller's scope
       for A of Actuals loop
-         Values.Append (Evaluate (As_Positional_Association (A).Value, Env));
+         Values.Append (Evaluate (As_Positional_Association (A).Value, Env, Current));
       end loop;
 
       if Natural (Formals.Length) /= Natural (Values.Length) then
          raise Interpretation_Error with "wrong number of arguments in call";
       end if;
 
-      Env.Frames.Append (Empty_Frame);
-      for I in 1 .. Natural (Formals.Length) loop
-         Env.Frames.Reference (Top (Env)).Bindings.Include
-           (Spelling_Of (Formals (I)), Values (I));
-      end loop;
-
-      if Is_Block (Comp) then
-         Execute (As_Block (Comp).Statements, Env);
-      else
-         Env.Frames.Delete_Last;
+      if not Is_Block (Comp) then
          raise Interpretation_Error with "subprogram body is not available";
       end if;
 
-      Result := Env.Frames (Top (Env)).Result;
-      Env.Frames.Delete_Last;
+      Call := Enter (Env, Global_Scope);
+      for I in 1 .. Natural (Formals.Length) loop
+         Define (Env, Call, Spelling_Of (Formals (I)), Values (I));
+      end loop;
+
+      Env.Returning    := False;
+      Env.Return_Value := (Kind => No_Value);
+      Run_Block_In (Comp, Env, Call);
+      Result := Env.Return_Value;
+      Env.Returning := False;
+      Leave (Env, Call);
       return Result;
    end Invoke;
 
-   function Evaluate (Expr : Cursor; Env : in out Environment) return Static_Value is
+   function Evaluate (Expr : Cursor; Env : in out Environment; Current : Positive)
+     return Static_Value is
    begin
       if Is_Numeric_Literal (Expr) then
          return Int (Long_Long_Integer'Value
@@ -246,10 +314,24 @@ package body Diana.Interpreter is
                  Text => As_String_Literal (Expr).Literal_Image);
 
       elsif Is_Parenthesized_Expression (Expr) then
-         return Evaluate (As_Parenthesized_Expression (Expr).Operand, Env);
+         return Evaluate (As_Parenthesized_Expression (Expr).Operand, Env, Current);
 
       elsif Is_Used_Object (Expr) or else Is_Used_Name (Expr) then
-         return Lookup (Env, Spelling_Of (Definition_Of (Expr)));
+         return Lookup (Env, Current, Spelling_Of (Definition_Of (Expr)));
+
+      elsif Is_Declare_Expression (Expr) then
+         declare
+            Inner : constant Positive := Enter (Env, Current);
+            Decls : constant Cursor := As_Declare_Expression (Expr).Declarations;
+            Result : Static_Value;
+         begin
+            if Decls /= No_Element and then Is_Declaration_S (Decls) then
+               Elaborate (As_Declaration_S (Decls).List, Env, Inner);
+            end if;
+            Result := Evaluate (As_Declare_Expression (Expr).Result, Env, Inner);
+            Leave (Env, Inner);
+            return Result;
+         end;
 
       elsif Is_Function_Call (Expr) then
          declare
@@ -258,13 +340,13 @@ package body Diana.Interpreter is
               As_Association_S (As_Function_Call (Expr).Actuals).List;
          begin
             if Is_Used_Builtin (Prefix) then
-               return Apply (As_Used_Builtin (Prefix).Builtin_Operator, Args, Env);
+               return Apply (As_Used_Builtin (Prefix).Builtin_Operator, Args, Env, Current);
             end if;
             declare
                Def : constant Cursor := Definition_Of (Prefix);
             begin
                if Is_Subprogram_Name (Def) then
-                  return Invoke (Def, Args, Env);
+                  return Invoke (Def, Args, Env, Current);
                else
                   raise Interpretation_Error with "call to a non-subprogram";
                end if;
@@ -276,29 +358,33 @@ package body Diana.Interpreter is
       end if;
    end Evaluate;
 
-   procedure Execute (Stmt : Cursor; Env : in out Environment) is
+   procedure Execute (Stmt : Cursor; Env : in out Environment; Current : Positive) is
    begin
       if Is_Null_Statement (Stmt) then
          null;
 
       elsif Is_Statement_S (Stmt) then
          for S of As_Statement_S (Stmt).List loop
-            Execute (S, Env);
-            exit when Has_Returned (Env);
+            Execute (S, Env, Current);
+            exit when Env.Returning;
          end loop;
+
+      elsif Is_Block_Statement (Stmt) then
+         declare
+            Inner : constant Positive := Enter (Env, Current);
+         begin
+            Run_Block_In (As_Block_Statement (Stmt).Block, Env, Inner);
+            Leave (Env, Inner);
+         end;
 
       elsif Is_Return_Statement (Stmt) then
          declare
             Obj : constant Cursor := As_Return_Statement (Stmt).Returned_Object;
          begin
             if Obj /= No_Element and then not Is_Void (Obj) then
-               declare
-                  Value : constant Static_Value := Evaluate (Obj, Env);
-               begin
-                  Env.Frames.Reference (Top (Env)).Result := Value;
-               end;
+               Env.Return_Value := Evaluate (Obj, Env, Current);
             end if;
-            Env.Frames.Reference (Top (Env)).Returned := True;
+            Env.Returning := True;
          end;
 
       elsif Is_Assignment (Stmt) then
@@ -306,9 +392,9 @@ package body Diana.Interpreter is
             Target : constant String :=
               Spelling_Of (Definition_Of (As_Assignment (Stmt).Target));
             Value  : constant Static_Value :=
-              Evaluate (As_Assignment (Stmt).Source, Env);
+              Evaluate (As_Assignment (Stmt).Source, Env, Current);
          begin
-            Bind (Env, Target, Value);
+            Assign (Env, Current, Target, Value);
          end;
 
       elsif Is_Procedure_Call (Stmt) then
@@ -322,10 +408,11 @@ package body Diana.Interpreter is
          begin
             if Name = "Put_Line" or else Name = "Put" then
                for A of Args loop
-                  Put_Line (Image (Evaluate (As_Positional_Association (A).Value, Env)));
+                  Put_Line (Image (Evaluate (As_Positional_Association (A).Value,
+                                             Env, Current)));
                end loop;
             elsif Is_Subprogram_Name (Def) then
-               Discard := Invoke (Def, Args, Env);
+               Discard := Invoke (Def, Args, Env, Current);
             else
                raise Interpretation_Error with "unknown procedure: " & Name;
             end if;
@@ -339,10 +426,10 @@ package body Diana.Interpreter is
                Condition : constant Cursor := As_Conditional_Clause (Clause).Condition;
             begin
                if Condition = No_Element or else Is_Void (Condition) then
-                  Execute (As_Conditional_Clause (Clause).Statements, Env);  -- "else"
+                  Execute (As_Conditional_Clause (Clause).Statements, Env, Current);
                   exit;
-               elsif Bool_Of (Evaluate (Condition, Env)) then
-                  Execute (As_Conditional_Clause (Clause).Statements, Env);
+               elsif Bool_Of (Evaluate (Condition, Env, Current)) then
+                  Execute (As_Conditional_Clause (Clause).Statements, Env, Current);
                   exit;
                end if;
             end;
@@ -354,10 +441,11 @@ package body Diana.Interpreter is
             Statements : constant Cursor := As_Loop_Statement (Stmt).Statements;
          begin
             if Is_While_Loop (Iteration) then
-               while not Has_Returned (Env)
-                 and then Bool_Of (Evaluate (As_While_Loop (Iteration).Condition, Env))
+               while not Env.Returning
+                 and then Bool_Of (Evaluate (As_While_Loop (Iteration).Condition,
+                                             Env, Current))
                loop
-                  Execute (Statements, Env);
+                  Execute (Statements, Env, Current);
                end loop;
             else
                raise Interpretation_Error with "only while-loops are supported";
@@ -370,10 +458,10 @@ package body Diana.Interpreter is
    end Execute;
 
    procedure Run (Statements : Cursor) is
-      Env : Environment;
+      Env    : Environment;
+      Global : constant Positive := Enter (Env, 0);   --  the global scope
    begin
-      Env.Frames.Append (Empty_Frame);   --  the global frame
-      Execute (Statements, Env);
+      Execute (Statements, Env, Global);
    end Run;
 
 end Diana.Interpreter;
