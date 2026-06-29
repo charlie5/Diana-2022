@@ -760,4 +760,68 @@ begin
                    & "its subunit body both resolved.");
       end;
    end;
+   New_Line;
+
+   --  14. Separate compilation of a SUBUNIT OF A SUBUNIT.  Package body 'Driver'
+   --      has "procedure Run is separate;"; the subunit 'Driver.Run' in turn has
+   --      "procedure Step is separate;", so 'Driver.Run.Step' is a subunit whose
+   --      parent is itself a subunit.  A merged subunit is loaded as its own
+   --      compilation, so completing the sub-subunit's stub uses the very same
+   --      Merge_Subunit, its (recursive) parent lookup finding the loaded subunit.
+   Put_Line ("Separate compilation of a subunit of a subunit:");
+   declare
+      Driver   : constant Cursor := Lib.Add_Compilation ("Driver");
+      Run_Id   : constant Cursor := Lib.Add_Child
+        (Driver, Diana.Builders.Subprogram_Name
+                   (Spelling => SU.To_Unbounded_String ("Run")));
+      Run_Stub : constant Cursor := Lib.Add_Child (Driver, Diana.Builders.Stub);
+      --  "procedure Run is separate;" in the body of 'Driver'
+      Run_Body : constant Cursor := Lib.Add_Child
+        (Driver, Diana.Builders.Subprogram_Body
+                   (Designator => Run_Id, Completion => Run_Stub));
+   begin
+      Lib.Reference (Name => "Driver.Run", Site => Run_Body, Wanted => "Run");
+      Put_Line ("    built body of 'Driver': procedure Run is separate;");
+      Show_Body_Status (Run_Body, "Run");
+
+      Put_Line ("    merging subunit 'Driver.Run' ...");
+      Lib.Merge_Subunit (Name => "Driver.Run", Parent => "Driver");
+      Show_Body_Status (Run_Body, "Run");
+
+      --  the subunit 'Driver.Run' itself has "procedure Step is separate;"
+      declare
+         Run_Unit  : constant Cursor := Lib.Require ("Driver.Run");  -- loaded subunit
+         Step_Id   : constant Cursor := Lib.Add_Child
+           (Run_Unit, Diana.Builders.Subprogram_Name
+                        (Spelling => SU.To_Unbounded_String ("Step")));
+         Step_Stub : constant Cursor := Lib.Add_Child (Run_Unit, Diana.Builders.Stub);
+         Step_Body : constant Cursor := Lib.Add_Child
+           (Run_Unit, Diana.Builders.Subprogram_Body
+                        (Designator => Step_Id, Completion => Step_Stub));
+      begin
+         Lib.Reference (Name => "Driver.Run.Step", Site => Step_Body, Wanted => "Step");
+         Put_Line ("    subunit 'Driver.Run' body has: procedure Step is separate;");
+         Show_Body_Status (Step_Body, "Step");
+
+         Put_Line ("    attempting to run with sub-subunit "
+                   & "'Driver.Run.Step' missing ...");
+         begin
+            Lib.Require_All_Resolved;
+            Put_Line ("    (unexpected) library reported fully resolved");
+         exception
+            when E : Diana.Library.Missing_Compilation =>
+               Put_Line ("    errored out as required: "
+                         & Ada.Exceptions.Exception_Message (E));
+         end;
+
+         Put_Line ("    merging sub-subunit 'Driver.Run.Step' (parent is itself "
+                   & "a subunit) ...");
+         Lib.Merge_Subunit (Name => "Driver.Run.Step", Parent => "Driver.Run");
+         Show_Body_Status (Step_Body, "Step");
+
+         Lib.Require_All_Resolved;
+         Put_Line ("    all separate compilations present — subunit and its own "
+                   & "subunit both completed.");
+      end;
+   end;
 end Diana_Harness;

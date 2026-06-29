@@ -143,9 +143,10 @@ generic package** (`Allocators.Free`), where the generic is resolved via its
 instantiation and its body's separate subunit is completed once present, and a
 **subunit of a child generic package** (`Containers.Vectors.Reserve`) — a child
 generic loaded beneath its parent whose body's separate subunit is then completed,
-and a **subunit of a nested generic package** (`Sessions.Pool.Evict`), where the
+a **subunit of a nested generic package** (`Sessions.Pool.Evict`), where the
 nested generic is no unit of its own so its subunit completes a stub in the
-enclosing compilation.
+enclosing compilation, and a **subunit of a subunit** (`Driver.Run.Step`), where
+a merged subunit is itself a loaded unit whose own separate subunit is then completed.
 
 ## Harness requirements
 
