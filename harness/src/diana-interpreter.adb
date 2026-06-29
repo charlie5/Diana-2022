@@ -358,6 +358,51 @@ package body Diana.Interpreter is
       end if;
    end Evaluate;
 
+   --  Evaluate a discrete range "Low .. High" (this slice supports Range_Bounds).
+   procedure Eval_Range (Discrete_Range : Cursor; Env : in out Environment;
+                         Current : Positive; Low, High : out Long_Long_Integer) is
+   begin
+      if Is_Range_Bounds (Discrete_Range) then
+         Low  := Whole_Of (Evaluate (As_Range_Bounds (Discrete_Range).Lower, Env, Current));
+         High := Whole_Of (Evaluate (As_Range_Bounds (Discrete_Range).Upper, Env, Current));
+      else
+         raise Interpretation_Error with "unsupported discrete range";
+      end if;
+   end Eval_Range;
+
+   --  Does a case alternative carry an "others" choice?
+   function Has_Others (Alt : Cursor) return Boolean is
+   begin
+      for C of As_Choice_S (As_Case_Alternative (Alt).Choices).List loop
+         if Is_Others_Choice (C) then
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Has_Others;
+
+   --  Does any value/range choice of the alternative cover the selector value?
+   function Choice_Matches (Alt : Cursor; Selector : Long_Long_Integer;
+                            Env : in out Environment; Current : Positive)
+     return Boolean
+   is
+      Low, High : Long_Long_Integer;
+   begin
+      for C of As_Choice_S (As_Case_Alternative (Alt).Choices).List loop
+         if Is_Choice_Expression (C) then
+            if Whole_Of (Evaluate (As_Choice_Expression (C).Value, Env, Current)) = Selector then
+               return True;
+            end if;
+         elsif Is_Choice_Range (C) then
+            Eval_Range (As_Choice_Range (C).Range_Item, Env, Current, Low, High);
+            if Selector >= Low and then Selector <= High then
+               return True;
+            end if;
+         end if;
+      end loop;
+      return False;
+   end Choice_Matches;
+
    procedure Execute (Stmt : Cursor; Env : in out Environment; Current : Positive) is
    begin
       if Is_Null_Statement (Stmt) then
@@ -447,8 +492,90 @@ package body Diana.Interpreter is
                loop
                   Execute (Statements, Env, Current);
                end loop;
+
+            elsif Is_For_Loop (Iteration) then
+               declare
+                  Iter : constant Cursor := As_For_Loop (Iteration).Iterator;
+               begin
+                  if not Is_Range_Iterator (Iter) then
+                     raise Interpretation_Error with
+                       "only range-based for loops are supported";
+                  end if;
+                  declare
+                     Parameter : constant String :=
+                       Spelling_Of (As_Range_Iterator (Iter).Parameter);
+                     Filter    : constant Cursor := As_Range_Iterator (Iter).Filter;
+                     Backward  : constant Boolean :=
+                       As_Range_Iterator (Iter).Reverse_Order;
+                     Scope     : constant Positive := Enter (Env, Current);
+                     Low, High : Long_Long_Integer;
+
+                     --  one iteration with the loop parameter set to V; the
+                     --  Ada 2022 "when" filter (if any) can skip the body
+                     procedure Iterate (V : Long_Long_Integer) is
+                     begin
+                        Define (Env, Scope, Parameter, Int (V));
+                        if Filter = No_Element or else Is_Void (Filter)
+                          or else Bool_Of (Evaluate (Filter, Env, Scope))
+                        then
+                           Execute (Statements, Env, Scope);
+                        end if;
+                     end Iterate;
+                  begin
+                     Eval_Range (As_Range_Iterator (Iter).Discrete_Range,
+                                 Env, Current, Low, High);
+                     if not Backward then
+                        declare
+                           V : Long_Long_Integer := Low;
+                        begin
+                           while V <= High and then not Env.Returning loop
+                              Iterate (V);
+                              exit when V = High;   --  guard type'Last overflow
+                              V := V + 1;
+                           end loop;
+                        end;
+                     else
+                        declare
+                           V : Long_Long_Integer := High;
+                        begin
+                           while V >= Low and then not Env.Returning loop
+                              Iterate (V);
+                              exit when V = Low;
+                              V := V - 1;
+                           end loop;
+                        end;
+                     end if;
+                     Leave (Env, Scope);
+                  end;
+               end;
+
             else
-               raise Interpretation_Error with "only while-loops are supported";
+               raise Interpretation_Error with "unsupported loop form";
+            end if;
+         end;
+
+      elsif Is_Case_Statement (Stmt) then
+         declare
+            Selector : constant Long_Long_Integer :=
+              Whole_Of (Evaluate (As_Case_Statement (Stmt).Selector, Env, Current));
+            Others_Branch : Cursor := No_Element;
+            Done          : Boolean := False;
+         begin
+            for Alt of As_Alternative_S
+                         (As_Case_Statement (Stmt).Alternatives).List
+            loop
+               if Is_Case_Alternative (Alt) then
+                  if Has_Others (Alt) then
+                     Others_Branch := As_Case_Alternative (Alt).Statements;
+                  elsif Choice_Matches (Alt, Selector, Env, Current) then
+                     Execute (As_Case_Alternative (Alt).Statements, Env, Current);
+                     Done := True;
+                     exit;
+                  end if;
+               end if;
+            end loop;
+            if not Done and then Others_Branch /= No_Element then
+               Execute (Others_Branch, Env, Current);
             end if;
          end;
 

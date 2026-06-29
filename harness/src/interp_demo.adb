@@ -67,6 +67,13 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("X")));
    X_Local  : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("X")));
+   --  Loop variables / accumulator for the for-loop + case demo.
+   Total_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Total")));
+   I_Def     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("I")));
+   J_Def     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("J")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -153,6 +160,32 @@ procedure Interp_Demo is
                (Declarations => Add (B.Item_S (List => NL (Decls))),
                 Statements   => Add (B.Statement_S (List => NL (Stmts))))))));
 
+   --  "for Param_Def in Low .. High loop Body_Seq end loop".
+   function For_In (Param_Def : Cursor; Low, High : Integer;
+                    Body_Seq : Cursor; Backward : Boolean := False) return Cursor is
+     (Add (B.Loop_Statement
+             (Iteration => Add (B.For_Loop (Iterator => Add (B.Range_Iterator
+                (Parameter      => Param_Def,
+                 Discrete_Range => Add (B.Range_Bounds (Lower => Lit (Low),
+                                                        Upper => Lit (High))),
+                 Reverse_Order  => Backward)))),
+              Statements => Body_Seq)));
+
+   --  Case choices and alternatives.
+   function Val_Choice (V : Integer) return Cursor is
+     (Add (B.Choice_Expression (Value => Lit (V))));
+   function Range_Choice (Low, High : Integer) return Cursor is
+     (Add (B.Choice_Range (Range_Item => Add (B.Range_Bounds (Lower => Lit (Low),
+                                                              Upper => Lit (High))))));
+   function Others_Ch return Cursor is (Add (B.Others_Choice));
+   function Alt (Choices : Cursor_Array; Stmts : Cursor) return Cursor is
+     (Add (B.Case_Alternative (Choices    => Add (B.Choice_S (List => NL (Choices))),
+                               Statements => Stmts)));
+   function Case_Of (Selector : Cursor; Alternatives : Cursor_Array) return Cursor is
+     (Add (B.Case_Statement
+             (Selector     => Selector,
+              Alternatives => Add (B.Alternative_S (List => NL (Alternatives))))));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -189,6 +222,23 @@ procedure Interp_Demo is
            Block_Stmt ([Var_Decl (X_Local, Lit (7))],
                        [Print (Ref (X_Local))]),
            Print (Ref (X_Global))]);
+
+   --  for J in 1 .. 10 loop Total := Total + J; end loop; Put_Line (Total);  -- 55
+   --  for I in 1 .. 5 loop case I is ... end case; end loop;     -- 100 200 30 40 5
+   Loops_Program : constant Cursor :=
+     Seq ([Assign (Total_Def, Lit (0)),
+           For_In (J_Def, 1, 10,
+                   Seq ([Assign (Total_Def,
+                                 Bin (Op_Plus, Ref (Total_Def), Ref (J_Def)))])),
+           Print (Ref (Total_Def)),
+           For_In (I_Def, 1, 5,
+                   Seq ([Case_Of (Ref (I_Def),
+                          [Alt ([Val_Choice (1), Val_Choice (2)],
+                                Seq ([Print (Bin (Op_Mul, Ref (I_Def), Lit (100)))])),
+                           Alt ([Range_Choice (3, 4)],
+                                Seq ([Print (Bin (Op_Mul, Ref (I_Def), Lit (10)))])),
+                           Alt ([Others_Ch],
+                                Seq ([Print (Ref (I_Def))]))])]))]);
 
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
@@ -233,6 +283,20 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Scope_Program);
+
+   --  for-loops and a case statement.
+   New_Line;
+   Put_Line ("Executing (for-loops + case):");
+   Put_Line ("    Total := 0;");
+   Put_Line ("    for J in 1 .. 10 loop Total := Total + J; end loop;  Put_Line (Total);");
+   Put_Line ("    for I in 1 .. 5 loop");
+   Put_Line ("       case I is when 1 | 2 => Put_Line (I * 100);");
+   Put_Line ("                 when 3 .. 4 => Put_Line (I * 10);");
+   Put_Line ("                 when others => Put_Line (I); end case;");
+   Put_Line ("    end loop;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Loops_Program);
 
    --  The execute-or-error requirement: running a use of an unbound variable
    --  must fail rather than produce a wrong answer.
