@@ -141,6 +141,12 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    Result_Attr : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Result")));
+   First_Attr  : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("First")));
+   Last_Attr   : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Last")));
+   Length_Attr : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Length")));
    Old_Attr    : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
    My_Error    : constant Cursor :=
@@ -259,6 +265,16 @@ procedure Interp_Demo is
                  Discrete_Range => Add (B.Range_Bounds (Lower => Lit (Low),
                                                         Upper => Lit (High))),
                  Reverse_Order  => Backward)))),
+              Statements => Body_Seq)));
+
+   --  "for Param_Def in Low_Expr .. High_Expr loop Body_Seq end loop".
+   function For_In_Range (Param_Def, Low_Expr, High_Expr, Body_Seq : Cursor)
+     return Cursor is
+     (Add (B.Loop_Statement
+             (Iteration => Add (B.For_Loop (Iterator => Add (B.Range_Iterator
+                (Parameter      => Param_Def,
+                 Discrete_Range => Add (B.Range_Bounds (Lower => Low_Expr,
+                                                        Upper => High_Expr)))))),
               Statements => Body_Seq)));
 
    --  "for Param_Def of Iterable [when Filter] loop Body_Seq end loop".
@@ -452,6 +468,12 @@ procedure Interp_Demo is
      (Add (B.Attribute_Reference
              (Prefix    => Add (B.Used_Name (Definition => Func_Def)),
               Attribute => Add (B.Used_Name (Definition => Result_Attr)))));
+
+   --  "Prefix'Attr" -- an array attribute ('First / 'Last / 'Length) of Prefix.
+   function Attr (Prefix, Attr_Def : Cursor) return Cursor is
+     (Add (B.Attribute_Reference
+             (Prefix    => Prefix,
+              Attribute => Add (B.Used_Name (Definition => Attr_Def)))));
 
    --  "raise Exc [with Message];", a "when Exc => Stmts" handler, and a block
    --  statement with exception handlers.
@@ -668,6 +690,19 @@ procedure Interp_Demo is
                                  Bin (Op_Plus, Ref (Big_Def), Ref (E_Def)))]),
                    Filter => Bin (Op_Gt, Ref (E_Def), Lit (4))),
            Print (Ref (Big_Def))]);                                        -- 21
+
+   --  Arr := (10, 20, 30);
+   --  Put_Line (Arr'First); Put_Line (Arr'Last); Put_Line (Arr'Length);   -- 1, 3, 3
+   --  for I in Arr'First .. Arr'Last loop Put_Line (Arr (I)); end loop;   -- 10, 20, 30
+   Attribute_Program : constant Cursor :=
+     Seq ([Assign (Arr_Def, Arr ([Lit (10), Lit (20), Lit (30)])),
+           Print (Attr (Ref (Arr_Def), First_Attr)),                       -- 1
+           Print (Attr (Ref (Arr_Def), Last_Attr)),                        -- 3
+           Print (Attr (Ref (Arr_Def), Length_Attr)),                      -- 3
+           For_In_Range (I_Def,
+                         Attr (Ref (Arr_Def), First_Attr),
+                         Attr (Ref (Arr_Def), Last_Attr),
+                         Seq ([Print (Index_At (Ref (Arr_Def), Ref (I_Def)))]))]);
 
    --  function Double (X : Integer) return Integer
    --     with Pre => X >= 0, Post => Result = X + X is begin return X + X; end;
@@ -1023,6 +1058,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Iterate_Program);
+
+   --  Array attributes 'First / 'Last / 'Length, and indexing a for-loop by them.
+   New_Line;
+   Put_Line ("Executing (array attributes 'First / 'Last / 'Length):");
+   Put_Line ("    Arr := (10, 20, 30);");
+   Put_Line ("    Put_Line (Arr'First); Put_Line (Arr'Last); Put_Line (Arr'Length);");
+   Put_Line ("    for I in Arr'First .. Arr'Last loop Put_Line (Arr (I)); end loop;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Attribute_Program);
 
    --  Runtime contract checks: a pragma Assert that holds, and a subprogram
    --  Pre/Post that hold.

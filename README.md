@@ -96,7 +96,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 
 - **Values:** integer, real (with promotion), boolean, string (`&`), access
   (`new`, `.all`, `null`, aliasing), and array / record aggregates with value
-  semantics (indexing, selection, component assignment).
+  semantics (indexing, selection, component assignment, and the
+  `'First`/`'Last`/`'Length` attributes).
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (with the Ada 2022 `when` filter), `case`, block statements with local
   declarations, `exit` (incl. named), `goto` + labels, `raise` + exception

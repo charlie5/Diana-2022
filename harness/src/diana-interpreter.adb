@@ -1052,6 +1052,27 @@ package body Diana.Interpreter is
                --  "Result" by Invoke while the postcondition is checked.
                return Lookup (Env, Current, "Result");
 
+            elsif Attribute = "First" or else Attribute = "Last"
+              or else Attribute = "Length"
+            then
+               --  array bounds (arrays are 1-based: First = 1, Last = Length)
+               declare
+                  Arr : constant Static_Value :=
+                    Evaluate (As_Attribute_Reference (Expr).Prefix, Env, Current);
+                  Length : Long_Long_Integer;
+               begin
+                  if Arr.Kind /= Array_Value then
+                     raise Interpretation_Error with
+                       "'" & Attribute & " requires an array value";
+                  end if;
+                  Length := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
+                  if Attribute = "First" then
+                     return Int (1);
+                  else                                  --  Last or Length
+                     return Int (Length);
+                  end if;
+               end;
+
             elsif Attribute = "Old" then
                declare
                   Name : constant String :=
