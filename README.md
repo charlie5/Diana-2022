@@ -151,9 +151,11 @@ a **subunit of a grandchild generic package** (`Hardware.Devices.Queue.Push`), a
 generic grandchild three units deep whose body's separate subunit is completed once
 the chain is present, a **subunit of a subunit of a generic package**
 (`Logger.Rotate.Archive`), a two-level subunit chain rooted at a generic package,
-and a **subunit of a child package of a generic package** (`Vault.Sealed.Unlock`),
+a **subunit of a child package of a generic package** (`Vault.Sealed.Unlock`),
 where the child-of-a-generic is used through a parent instance and its body's
-separate subunit is then completed.
+separate subunit is then completed, and a **subunit of a grandchild package of a
+generic package** (`Geometry.Shapes.Solids.Render`), a generic grandchild reached
+through two instance levels whose body's separate subunit is then completed.
 
 ## Harness requirements
 

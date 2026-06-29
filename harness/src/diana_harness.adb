@@ -1113,4 +1113,127 @@ begin
                    & "and its subunit body both resolved.");
       end;
    end;
+   New_Line;
+
+   --  18. Separate compilation of a SUBUNIT OF A GRANDCHILD PACKAGE OF A GENERIC
+   --      PACKAGE.  'Geometry' is a generic package, 'Geometry.Shapes' a child of
+   --      it, 'Geometry.Shapes.Solids' a grandchild — all generic, reached
+   --      through TWO instance levels (new Geometry; new G_Inst.Shapes; new
+   --      S_Inst.Solids).  The grandchild's body carries "procedure Render is
+   --      separate;", a subunit completed once the whole chain is present.
+   Put_Line ("Separate compilation of a subunit of a grandchild package "
+             & "of a generic package:");
+   declare
+      Client12    : constant Cursor := Lib.Add_Compilation ("Client12");
+      Geo_Stub    : constant Cursor := Lib.Require ("Geometry");
+      Shapes_Stub : constant Cursor := Lib.Require ("Geometry.Shapes");
+      Solids_Stub : constant Cursor := Lib.Require ("Geometry.Shapes.Solids");
+      --  two local parent instances feeding the next instantiation level
+      G_Inst : constant Cursor := Lib.Add_Child
+        (Client12, Diana.Builders.Package_Name
+                     (Spelling => SU.To_Unbounded_String ("G_Inst")));
+      S_Inst : constant Cursor := Lib.Add_Child
+        (Client12, Diana.Builders.Package_Name
+                     (Spelling => SU.To_Unbounded_String ("S_Inst")));
+      --  "package G_Inst is new Geometry;"
+      Inst1  : constant Cursor := Lib.Add_Child
+        (Client12, Diana.Builders.Generic_Instantiation
+                     (Generic_Unit => Lib.Add_Child
+                        (Client12, Diana.Builders.Used_Name
+                                     (Definition => Geo_Stub))));
+      --  "package S_Inst is new G_Inst.Shapes;"
+      Inst2  : constant Cursor := Lib.Add_Child
+        (Client12, Diana.Builders.Generic_Instantiation
+                     (Generic_Unit => Lib.Add_Child
+                        (Client12, Diana.Builders.Selected_Component
+           (Prefix   => Lib.Add_Child (Client12,
+                          Diana.Builders.Used_Name (Definition => G_Inst)),
+            Selector => Lib.Add_Child (Client12,
+                          Diana.Builders.Used_Name (Definition => Shapes_Stub))))));
+      --  "package Solids_Inst is new S_Inst.Solids;"
+      Inst3  : constant Cursor := Lib.Add_Child
+        (Client12, Diana.Builders.Generic_Instantiation
+                     (Generic_Unit => Lib.Add_Child
+                        (Client12, Diana.Builders.Selected_Component
+           (Prefix   => Lib.Add_Child (Client12,
+                          Diana.Builders.Used_Name (Definition => S_Inst)),
+            Selector => Lib.Add_Child (Client12,
+                          Diana.Builders.Used_Name (Definition => Solids_Stub))))));
+
+      function Geo_Site return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst1).Generic_Unit);
+      function Sel2 return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst2).Generic_Unit);
+      function Shapes_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel2).Selector);
+      function Sel3 return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst3).Generic_Unit);
+      function Solids_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel3).Selector);
+   begin
+      Lib.Reference (Name => "Geometry", Site => Geo_Site, Wanted => "Geometry");
+      Lib.Reference (Name => "Geometry.Shapes", Site => Shapes_Site,
+                     Wanted => "Shapes");
+      Lib.Reference (Name => "Geometry.Shapes.Solids", Site => Solids_Site,
+                     Wanted => "Solids");
+      Put_Line ("    built 'Client12': package G_Inst is new Geometry;");
+      Put_Line ("                      package S_Inst is new G_Inst.Shapes;");
+      Put_Line ("                      package Solids_Inst is new S_Inst.Solids;");
+      Show_Resolution (Geo_Site, "Geometry");
+      Show_Resolution (Shapes_Site, "Shapes");
+      Show_Resolution (Solids_Site, "Solids");
+
+      --  merge the generic chain top-down (each child via its loaded parent)
+      Put_Line ("    merging generics 'Geometry', 'Geometry.Shapes', then "
+                & "'Geometry.Shapes.Solids' ...");
+      Lib.Merge (Name => "Geometry", Declared => "Geometry",
+                 Kind => Diana.Library.Generic_Package_Unit);
+      Lib.Merge (Name => "Geometry.Shapes", Declared => "Shapes",
+                 Kind => Diana.Library.Generic_Package_Unit, Parent => "Geometry");
+      Lib.Merge (Name => "Geometry.Shapes.Solids", Declared => "Solids",
+                 Kind => Diana.Library.Generic_Package_Unit,
+                 Parent => "Geometry.Shapes");
+      Show_Resolution (Solids_Site, "Solids",
+                       Detail => "a generic grandchild of Geometry");
+
+      --  the grandchild generic's body has "procedure Render is separate;"
+      declare
+         GC_Body   : constant Cursor :=
+           Lib.Require ("Geometry.Shapes.Solids");  -- loaded grandchild generic
+         Render_Id : constant Cursor := Lib.Add_Child
+           (GC_Body, Diana.Builders.Subprogram_Name
+                       (Spelling => SU.To_Unbounded_String ("Render")));
+         Stub_Node : constant Cursor := Lib.Add_Child (GC_Body, Diana.Builders.Stub);
+         Render_Body : constant Cursor := Lib.Add_Child
+           (GC_Body, Diana.Builders.Subprogram_Body
+                       (Designator => Render_Id, Completion => Stub_Node));
+      begin
+         Lib.Reference (Name => "Geometry.Shapes.Solids.Render",
+                        Site => Render_Body, Wanted => "Render");
+         Put_Line ("    'Geometry.Shapes.Solids' body has: procedure Render "
+                   & "is separate;");
+         Show_Body_Status (Render_Body, "Render");
+
+         Put_Line ("    attempting to run with subunit "
+                   & "'Geometry.Shapes.Solids.Render' missing ...");
+         begin
+            Lib.Require_All_Resolved;
+            Put_Line ("    (unexpected) library reported fully resolved");
+         exception
+            when E : Diana.Library.Missing_Compilation =>
+               Put_Line ("    errored out as required: "
+                         & Ada.Exceptions.Exception_Message (E));
+         end;
+
+         Put_Line ("    merging subunit 'Geometry.Shapes.Solids.Render' of the "
+                   & "grandchild generic ...");
+         Lib.Merge_Subunit (Name   => "Geometry.Shapes.Solids.Render",
+                            Parent => "Geometry.Shapes.Solids");
+         Show_Body_Status (Render_Body, "Render");
+
+         Lib.Require_All_Resolved;
+         Put_Line ("    all separate compilations present — grandchild of a "
+                   & "generic and its subunit body both resolved.");
+      end;
+   end;
 end Diana_Harness;
