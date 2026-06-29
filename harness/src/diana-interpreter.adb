@@ -738,14 +738,16 @@ package body Diana.Interpreter is
    function Invoke (Definition : Cursor; Actuals : Node_List;
                     Env : in out Environment; Current : Positive) return Static_Value
    is
-      Spec      : constant Cursor := As_Subprogram_Name (Definition).Specification;
-      Comp      : constant Cursor := As_Subprogram_Name (Definition).Completion;
+      Spec      : Cursor := As_Subprogram_Name (Definition).Specification;
+      Comp      : Cursor := As_Subprogram_Name (Definition).Completion;
       Params    : Node_List;
       Formals   : Node_List;          --  formal defining names, flattened
       Actuals_E : Node_List;          --  actual expressions (parallel to Formals)
       Copy_In   : Flag_Vectors.Vector;  --  in / in out: copy actual into formal
       Copy_Back : Flag_Vectors.Vector;  --  out / in out: copy formal back to actual
       Values    : Value_Vectors.Vector;
+      Gen_Formals : Node_List;        --  generic formal-object names (an instance)
+      Gen_Actuals : Node_List;        --  the instantiation's actual expressions
       Call      : Positive;
       Count     : Natural;
       Result    : Static_Value;
@@ -754,6 +756,43 @@ package body Diana.Interpreter is
       Old_Snap  : Value_Maps.Map;         --  parameter values at entry (for 'Old)
       Pushed    : Boolean := False;       --  this call pushed a variant value
    begin
+      --  A generic instance ("F is new G (...)"): redirect to the generic
+      --  template's profile and body, capturing the generic formal -> actual
+      --  binding to apply (alongside the call parameters) in the call scope.
+      if Is_Unit_Instantiation (Comp) then
+         declare
+            Inst     : constant Cursor := As_Unit_Instantiation (Comp).Instance;
+            Template : constant Cursor :=
+              Definition_Of (As_Generic_Instantiation (Inst).Generic_Unit);
+            Gen_Spec : constant Cursor := As_Generic_Name (Template).Specification;
+         begin
+            if not Is_Generic_Subprogram_Header (Gen_Spec) then
+               raise Interpretation_Error with
+                 "only generic subprograms can be instantiated";
+            end if;
+            Spec := As_Generic_Subprogram_Header (Gen_Spec).Profile;
+            Comp := As_Generic_Name (Template).Completion;
+            for F of As_Generic_Formal_S
+                       (As_Generic_Name (Template).Formals).List
+            loop
+               if Is_Generic_Formal_Object (F) then
+                  for Nm of As_Defining_Name_S
+                              (As_Generic_Formal_Object (F).Names).List
+                  loop
+                     Gen_Formals.Append (Nm);
+                  end loop;
+               end if;
+            end loop;
+            for A of As_Association_S
+                       (As_Generic_Instantiation (Inst).Associations).List
+            loop
+               if Is_Positional_Association (A) then
+                  Gen_Actuals.Append (As_Positional_Association (A).Value);
+               end if;
+            end loop;
+         end;
+      end if;
+
       if    Is_Procedure_Header (Spec) then
          Params := As_Parameter_S (As_Procedure_Header (Spec).Parameters).List;
       elsif Is_Function_Header (Spec) then
@@ -809,6 +848,17 @@ package body Diana.Interpreter is
       Call := Enter (Env, Static_Link (Env, Current, Name));
       for I in 1 .. Count loop
          Define (Env, Call, Spelling_Of (Formals (I)), Values (I));
+      end loop;
+
+      --  bind the generic formals to the instantiation's actuals (for an
+      --  instance), evaluated in the caller's scope
+      if Natural (Gen_Formals.Length) /= Natural (Gen_Actuals.Length) then
+         Leave (Env, Call);
+         raise Interpretation_Error with "wrong number of generic actuals in " & Name;
+      end if;
+      for I in 1 .. Natural (Gen_Formals.Length) loop
+         Define (Env, Call, Spelling_Of (Gen_Formals (I)),
+                 Evaluate (Gen_Actuals (I), Env, Current));
       end loop;
 
       --  contract checks at entry: Pre, Contract_Cases guard selection, and

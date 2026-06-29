@@ -110,6 +110,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 - **Subprograms:** `in` / `out` / `in out` parameters with copy-back, recursion
   over a call stack, and nested subprograms that close over their enclosing
   activation (static links).
+- **Generics:** generic-subprogram instantiation — `function F is new G (Actuals)`
+  runs `G`'s body with its generic formal objects bound to the instance's actuals.
 - **Scoping:** a lexical scope chain; locals shadow outer names.
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,

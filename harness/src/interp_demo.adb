@@ -180,6 +180,11 @@ procedure Interp_Demo is
                                       Position => 2));
    C_Var      : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("C")));
+   --  generic demo: a generic formal object "Increment" and a function param "Y".
+   Increment_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Increment")));
+   Y_Gen         : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -359,6 +364,24 @@ procedure Interp_Demo is
      (Add (B.Function_Header (Parameters => Add (B.Parameter_S (List => NL (Params))))));
    function Sub_Body_Item (Designator : Cursor) return Cursor is
      (Add (B.Subprogram_Body (Designator => Designator)));
+
+   --  a "generic Name : Integer;" formal object, and an instantiation
+   --  completion "is new Generic_Def (Actuals)".
+   function Generic_Object (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Object
+             (Names => Add (B.Defining_Name_S (List => NL ([Name_Def]))),
+              Mode  => Add (B.Generic_In))));
+   function Instance_Of (Generic_Def : Cursor; Actuals : Cursor_Array)
+     return Cursor is
+      Items : Node_List;
+   begin
+      for A of Actuals loop
+         Items.Append (Add (B.Positional_Association (Value => A)));
+      end loop;
+      return Add (B.Unit_Instantiation (Instance => Add (B.Generic_Instantiation
+        (Generic_Unit => Add (B.Used_Name (Definition => Generic_Def)),
+         Associations => Add (B.Association_S (List => Items))))));
+   end Instance_Of;
 
    --  "if Condition then Then_Seq end if" (no else arm).
    function If_Then (Condition, Then_Seq : Cursor) return Cursor is
@@ -1000,6 +1023,32 @@ procedure Interp_Demo is
            Seq ([Print (Exc_Attr (ExcName_Name, E_Def)),
                  Print (Exc_Attr (ExcMsg_Name, E_Def))]))]);
 
+   --  generic Increment : Integer;
+   --  function Add_By (Y : Integer) return Integer is begin return Y + Increment; end;
+   Add_By : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Add_By"),
+             Formals       => Add (B.Generic_Formal_S
+               (List => NL ([Generic_Object (Increment_Def)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (Y_Gen)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus, Ref (Y_Gen),
+                                                  Ref (Increment_Def)))])));
+
+   --  function Add_5  is new Add_By (5);
+   --  function Add_10 is new Add_By (10);
+   Add_5  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling    => SU.To_Unbounded_String ("Add_5"),
+                             Completion  => Instance_Of (Add_By, [Lit (5)])));
+   Add_10 : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling    => SU.To_Unbounded_String ("Add_10"),
+                             Completion  => Instance_Of (Add_By, [Lit (10)])));
+
+   --  Put_Line (Add_5 (100)); Put_Line (Add_10 (100));   -- 105, 110
+   Generic_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Add_5, [Lit (100)])),
+           Print (Sub_Call (Add_10, [Lit (100)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -1281,6 +1330,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Occurrence_Program);
+
+   --  Generic instantiation: one generic, two instances with different actuals.
+   New_Line;
+   Put_Line ("Executing (generic instantiation):");
+   Put_Line ("    generic Increment : Integer; function Add_By (Y : Integer) return Integer");
+   Put_Line ("       is begin return Y + Increment; end;");
+   Put_Line ("    function Add_5 is new Add_By (5); function Add_10 is new Add_By (10);");
+   Put_Line ("    Put_Line (Add_5 (100)); Put_Line (Add_10 (100));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Generic_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
