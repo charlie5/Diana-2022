@@ -74,6 +74,22 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("I")));
    J_Def     : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("J")));
+   --  out / in out copy-back demo: caller variables, Swap's formals + local,
+   --  and Get_Answer's out formal.
+   A_Def   : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("A")));
+   B_Def   : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("B")));
+   C_Def   : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("C")));
+   X_Par   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Y_Par   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   T_Local : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("T")));
+   R_Par   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("R")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -186,6 +202,27 @@ procedure Interp_Demo is
              (Selector     => Selector,
               Alternatives => Add (B.Alternative_S (List => NL (Alternatives))))));
 
+   --  Parameters, a procedure spec, a bare body block, and a procedure call.
+   function In_Out_Par (Def : Cursor) return Cursor is
+     (Add (B.In_Out_Parameter (Names => Add (B.Defining_Name_S (List => NL ([Def]))))));
+   function Out_Par (Def : Cursor) return Cursor is
+     (Add (B.Out_Parameter (Names => Add (B.Defining_Name_S (List => NL ([Def]))))));
+   function Proc_Spec (Params : Cursor_Array) return Cursor is
+     (Add (B.Procedure_Header (Parameters => Add (B.Parameter_S (List => NL (Params))))));
+   function Blk (Decls, Stmts : Cursor_Array) return Cursor is
+     (Add (B.Block (Declarations => Add (B.Item_S (List => NL (Decls))),
+                    Statements   => Add (B.Statement_S (List => NL (Stmts))))));
+   function Call_Proc (Def : Cursor; Args : Cursor_Array) return Cursor is
+      Items : Node_List;
+   begin
+      for A of Args loop
+         Items.Append (Add (B.Positional_Association (Value => A)));
+      end loop;
+      return Add (B.Procedure_Call
+                    (Prefix  => Add (B.Used_Name (Definition => Def)),
+                     Actuals => Add (B.Association_S (List => Items))));
+   end Call_Proc;
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -239,6 +276,34 @@ procedure Interp_Demo is
                                 Seq ([Print (Bin (Op_Mul, Ref (I_Def), Lit (10)))])),
                            Alt ([Others_Ch],
                                 Seq ([Print (Ref (I_Def))]))])]))]);
+
+   --  procedure Swap (X, Y : in out Integer) is T : Integer := X;
+   --     begin X := Y; Y := T; end;
+   Swap_Def : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Swap"),
+             Specification => Proc_Spec ([In_Out_Par (X_Par), In_Out_Par (Y_Par)]),
+             Completion    => Blk ([Var_Decl (T_Local, Ref (X_Par))],
+                                   [Assign (X_Par, Ref (Y_Par)),
+                                    Assign (Y_Par, Ref (T_Local))])));
+
+   --  procedure Get_Answer (R : out Integer) is begin R := 42; end;
+   Answer_Def : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Get_Answer"),
+             Specification => Proc_Spec ([Out_Par (R_Par)]),
+             Completion    => Blk ([], [Assign (R_Par, Lit (42))])));
+
+   --  A := 1; B := 2; Swap (A, B); Put_Line (A); Put_Line (B);  -- 2, 1
+   --  Get_Answer (C); Put_Line (C);                             -- 42
+   Params_Program : constant Cursor :=
+     Seq ([Assign (A_Def, Lit (1)),
+           Assign (B_Def, Lit (2)),
+           Call_Proc (Swap_Def, [Ref (A_Def), Ref (B_Def)]),
+           Print (Ref (A_Def)),
+           Print (Ref (B_Def)),
+           Call_Proc (Answer_Def, [Ref (C_Def)]),
+           Print (Ref (C_Def))]);
 
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
@@ -297,6 +362,19 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Loops_Program);
+
+   --  out / in out parameters: the callee's final formal values are copied back
+   --  to the caller's actual variables.
+   New_Line;
+   Put_Line ("Executing (out / in out parameter copy-back):");
+   Put_Line ("    procedure Swap (X, Y : in out Integer) is T : Integer := X;");
+   Put_Line ("       begin X := Y; Y := T; end;");
+   Put_Line ("    procedure Get_Answer (R : out Integer) is begin R := 42; end;");
+   Put_Line ("    A := 1; B := 2; Swap (A, B); Put_Line (A); Put_Line (B);");
+   Put_Line ("    Get_Answer (C); Put_Line (C);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Params_Program);
 
    --  The execute-or-error requirement: running a use of an unbound variable
    --  must fail rather than produce a wrong answer.

@@ -27,6 +27,7 @@ package body Diana.Interpreter is
 
    package Scope_Vectors is new Ada.Containers.Vectors (Positive, Scope);
    package Value_Vectors is new Ada.Containers.Vectors (Positive, Static_Value);
+   package Flag_Vectors  is new Ada.Containers.Vectors (Positive, Boolean);
 
    Global_Scope : constant Positive := 1;
 
@@ -244,13 +245,17 @@ package body Diana.Interpreter is
    function Invoke (Definition : Cursor; Actuals : Node_List;
                     Env : in out Environment; Current : Positive) return Static_Value
    is
-      Spec    : constant Cursor := As_Subprogram_Name (Definition).Specification;
-      Comp    : constant Cursor := As_Subprogram_Name (Definition).Completion;
-      Params  : Node_List;
-      Formals : Node_List;
-      Values  : Value_Vectors.Vector;
-      Call    : Positive;
-      Result  : Static_Value;
+      Spec      : constant Cursor := As_Subprogram_Name (Definition).Specification;
+      Comp      : constant Cursor := As_Subprogram_Name (Definition).Completion;
+      Params    : Node_List;
+      Formals   : Node_List;          --  formal defining names, flattened
+      Actuals_E : Node_List;          --  actual expressions (parallel to Formals)
+      Copy_In   : Flag_Vectors.Vector;  --  in / in out: copy actual into formal
+      Copy_Back : Flag_Vectors.Vector;  --  out / in out: copy formal back to actual
+      Values    : Value_Vectors.Vector;
+      Call      : Positive;
+      Count     : Natural;
+      Result    : Static_Value;
    begin
       if    Is_Procedure_Header (Spec) then
          Params := As_Parameter_S (As_Procedure_Header (Spec).Parameters).List;
@@ -260,9 +265,14 @@ package body Diana.Interpreter is
          raise Interpretation_Error with "subprogram specification is not callable";
       end if;
 
+      --  flatten the formals, recording each one's mode
       for P of Params loop
          declare
-            Names : Cursor;
+            Names    : Cursor;
+            In_Mode  : constant Boolean :=
+              Is_In_Parameter (P) or else Is_In_Out_Parameter (P);
+            Out_Mode : constant Boolean :=
+              Is_Out_Parameter (P) or else Is_In_Out_Parameter (P);
          begin
             if    Is_In_Parameter (P)     then Names := As_In_Parameter (P).Names;
             elsif Is_Out_Parameter (P)    then Names := As_Out_Parameter (P).Names;
@@ -271,25 +281,35 @@ package body Diana.Interpreter is
             end if;
             for Nm of As_Defining_Name_S (Names).List loop
                Formals.Append (Nm);
+               Copy_In.Append (In_Mode);
+               Copy_Back.Append (Out_Mode);
             end loop;
          end;
       end loop;
 
-      --  actuals are evaluated in the caller's scope
       for A of Actuals loop
-         Values.Append (Evaluate (As_Positional_Association (A).Value, Env, Current));
+         Actuals_E.Append (As_Positional_Association (A).Value);
       end loop;
 
-      if Natural (Formals.Length) /= Natural (Values.Length) then
+      Count := Natural (Formals.Length);
+      if Count /= Natural (Actuals_E.Length) then
          raise Interpretation_Error with "wrong number of arguments in call";
       end if;
-
       if not Is_Block (Comp) then
          raise Interpretation_Error with "subprogram body is not available";
       end if;
 
+      --  copy actuals in (in the caller's scope); an out formal starts unset
+      for I in 1 .. Count loop
+         if Copy_In (I) then
+            Values.Append (Evaluate (Actuals_E (I), Env, Current));
+         else
+            Values.Append (Static_Value'(Kind => No_Value));
+         end if;
+      end loop;
+
       Call := Enter (Env, Global_Scope);
-      for I in 1 .. Natural (Formals.Length) loop
+      for I in 1 .. Count loop
          Define (Env, Call, Spelling_Of (Formals (I)), Values (I));
       end loop;
 
@@ -298,6 +318,22 @@ package body Diana.Interpreter is
       Run_Block_In (Comp, Env, Call);
       Result := Env.Return_Value;
       Env.Returning := False;
+
+      --  copy out / in out formals back to their actual variables; the actual
+      --  must be a name (else it is not a legal out/in out actual)
+      for I in 1 .. Count loop
+         if Copy_Back (I) then
+            declare
+               Final  : constant Static_Value :=
+                 Lookup (Env, Call, Spelling_Of (Formals (I)));
+               Target : constant String :=
+                 Spelling_Of (Definition_Of (Actuals_E (I)));
+            begin
+               Assign (Env, Current, Target, Final);
+            end;
+         end if;
+      end loop;
+
       Leave (Env, Call);
       return Result;
    end Invoke;
