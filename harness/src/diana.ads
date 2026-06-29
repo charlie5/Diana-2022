@@ -41,16 +41,21 @@ package Diana is
    --  A static value (external rep of the IDL Value type / VAL_CLASS).  The
    --  interpreter also uses this as its runtime value type; Access_Value is a
    --  runtime-only addition (an address into the interpreter's heap; 0 = null).
+   --  Array_Value / Record_Value carry a handle into the interpreter's array
+   --  or record store; Access_Value an address into its heap (0 = null).
    type Value_Kind is (No_Value, String_Value, Boolean_Value,
-                       Integer_Value, Real_Value, Access_Value);
+                       Integer_Value, Real_Value, Access_Value,
+                       Array_Value, Record_Value);
    type Static_Value (Kind : Value_Kind := No_Value) is record
       case Kind is
          when No_Value      => null;
-         when String_Value  => Text    : Symbol_Rep;
-         when Boolean_Value => Flag    : Boolean;
-         when Integer_Value => Whole   : Long_Long_Integer;
-         when Real_Value    => Number  : Long_Long_Float;
-         when Access_Value  => Address : Natural;
+         when String_Value  => Text     : Symbol_Rep;
+         when Boolean_Value => Flag     : Boolean;
+         when Integer_Value => Whole    : Long_Long_Integer;
+         when Real_Value    => Number   : Long_Long_Float;
+         when Access_Value  => Address  : Natural;
+         when Array_Value   => Elements : Natural;
+         when Record_Value  => Fields   : Natural;
       end case;
    end record;
 

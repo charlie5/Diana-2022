@@ -39,6 +39,13 @@ package body Diana.Interpreter is
    package Value_Vectors is new Ada.Containers.Vectors (Positive, Static_Value);
    package Flag_Vectors  is new Ada.Containers.Vectors (Positive, Boolean);
 
+   --  Composite stores: an array value is a vector of element values, a record
+   --  value a map of component-name -> value; both are referred to by handle.
+   package Array_Store  is new Ada.Containers.Vectors
+     (Positive, Value_Vectors.Vector, Value_Vectors."=");
+   package Record_Store is new Ada.Containers.Vectors
+     (Positive, Value_Maps.Map, Value_Maps."=");
+
    Global_Scope : constant Positive := 1;
 
    --  In-flight control transfer.  At most one of Returning / Exiting / Jumping
@@ -47,6 +54,8 @@ package body Diana.Interpreter is
    type Environment is limited record
       Scopes       : Scope_Vectors.Vector;
       Heap         : Value_Vectors.Vector;           --  allocated objects (1-based)
+      Arrays       : Array_Store.Vector;             --  array values (1-based)
+      Records      : Record_Store.Vector;            --  record values (1-based)
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
       Exiting      : Boolean      := False;          --  an exit is in progress
@@ -76,10 +85,44 @@ package body Diana.Interpreter is
       end loop;
    end Leave;
 
+   --  Composites have value semantics: a fresh handle with (recursively) copied
+   --  contents.  Scalars and access values are returned unchanged, so access
+   --  values alias their designated object while arrays / records do not.
+   function Copy (Env : in out Environment; Value : Static_Value) return Static_Value is
+   begin
+      case Value.Kind is
+         when Array_Value =>
+            declare
+               Source : constant Value_Vectors.Vector := Env.Arrays (Value.Elements);
+               Target : Value_Vectors.Vector;
+            begin
+               for E of Source loop
+                  Target.Append (Copy (Env, E));
+               end loop;
+               Env.Arrays.Append (Target);
+               return (Kind => Array_Value, Elements => Env.Arrays.Last_Index);
+            end;
+         when Record_Value =>
+            declare
+               Source : constant Value_Maps.Map := Env.Records (Value.Fields);
+               Target : Value_Maps.Map;
+            begin
+               for C in Source.Iterate loop
+                  Target.Insert (Value_Maps.Key (C), Copy (Env, Value_Maps.Element (C)));
+               end loop;
+               Env.Records.Append (Target);
+               return (Kind => Record_Value, Fields => Env.Records.Last_Index);
+            end;
+         when others =>
+            return Value;
+      end case;
+   end Copy;
+
+   --  Bind Name in Scope_Index, taking a value copy (composite value semantics).
    procedure Define (Env : in out Environment; Scope_Index : Positive;
                      Name : String; Value : Static_Value) is
    begin
-      Env.Scopes.Reference (Scope_Index).Bindings.Include (Name, Value);
+      Env.Scopes.Reference (Scope_Index).Bindings.Include (Name, Copy (Env, Value));
    end Define;
 
    --  Read a name, walking out through the lexical chain from Current.
@@ -200,6 +243,8 @@ package body Diana.Interpreter is
                     else "access #"
                          & Ada.Strings.Fixed.Trim
                              (Natural'Image (V.Address), Ada.Strings.Both));
+         when Array_Value   => return "(array)";
+         when Record_Value  => return "(record)";
          when No_Value      => return "<no value>";
       end case;
    end Image;
@@ -221,6 +266,20 @@ package body Diana.Interpreter is
          raise Interpretation_Error with "expected a name with a definition";
       end if;
    end Definition_Of;
+
+   --  The component name of a record-aggregate association ("(Comp => ...)"):
+   --  a single value choice naming the component.
+   function Field_Name (Assoc : Cursor) return String is
+      Choices : constant Node_List :=
+        As_Choice_S (As_Named_Association (Assoc).Choices).List;
+   begin
+      if Natural (Choices.Length) /= 1
+        or else not Is_Choice_Expression (Choices (1))
+      then
+         raise Interpretation_Error with "record aggregate: bad component choice";
+      end if;
+      return Spelling_Of (Definition_Of (As_Choice_Expression (Choices (1)).Value));
+   end Field_Name;
 
    --  ---- evaluator / executor / caller (mutually recursive) -----------------
    function Evaluate (Expr : Cursor; Env : in out Environment; Current : Positive)
@@ -526,7 +585,7 @@ package body Diana.Interpreter is
             Designated : constant Static_Value :=
               Evaluate (As_Qualified_Allocator (Expr).Value, Env, Current);
          begin
-            Env.Heap.Append (Designated);
+            Env.Heap.Append (Copy (Env, Designated));
             return (Kind => Access_Value, Address => Env.Heap.Last_Index);
          end;
 
@@ -545,6 +604,82 @@ package body Diana.Interpreter is
                raise Interpretation_Error with "dereference of null";
             end if;
             return Env.Heap.Element (Acc.Address);
+         end;
+
+      elsif Is_Aggregate (Expr) or else Is_Container_Aggregate (Expr) then
+         declare
+            Associations : constant Cursor :=
+              (if Is_Aggregate (Expr) then As_Aggregate (Expr).Associations
+               else As_Container_Aggregate (Expr).Associations);
+            Items : constant Node_List := As_Association_S (Associations).List;
+         begin
+            if Items.Is_Empty or else Is_Positional_Association (Items (1)) then
+               --  positional => array value (1-based)
+               declare
+                  Elements : Value_Vectors.Vector;
+               begin
+                  for A of Items loop
+                     if not Is_Positional_Association (A) then
+                        raise Interpretation_Error with "mixed aggregate";
+                     end if;
+                     Elements.Append
+                       (Copy (Env, Evaluate (As_Positional_Association (A).Value,
+                                             Env, Current)));
+                  end loop;
+                  Env.Arrays.Append (Elements);
+                  return (Kind => Array_Value, Elements => Env.Arrays.Last_Index);
+               end;
+            else
+               --  named components => record value
+               declare
+                  Fields : Value_Maps.Map;
+               begin
+                  for A of Items loop
+                     if not Is_Named_Association (A) then
+                        raise Interpretation_Error with "mixed aggregate";
+                     end if;
+                     Fields.Include
+                       (Field_Name (A),
+                        Copy (Env, Evaluate (As_Named_Association (A).Actual,
+                                             Env, Current)));
+                  end loop;
+                  Env.Records.Append (Fields);
+                  return (Kind => Record_Value, Fields => Env.Records.Last_Index);
+               end;
+            end if;
+         end;
+
+      elsif Is_Indexed_Component (Expr) then                  --  A (I)
+         declare
+            Arr : constant Static_Value :=
+              Evaluate (As_Indexed_Component (Expr).Prefix, Env, Current);
+            Indices : constant Node_List :=
+              As_Expression_S (As_Indexed_Component (Expr).Indices).List;
+            I : Long_Long_Integer;
+         begin
+            if Arr.Kind /= Array_Value then
+               raise Interpretation_Error with "indexing a non-array value";
+            end if;
+            I := Whole_Of (Evaluate (Indices (1), Env, Current));
+            if I < 1 or else I > Long_Long_Integer (Env.Arrays (Arr.Elements).Length) then
+               raise Interpretation_Error with "array index out of range";
+            end if;
+            return Env.Arrays (Arr.Elements).Element (Positive (I));
+         end;
+
+      elsif Is_Selected_Component (Expr) then                 --  R.Field
+         declare
+            Rec : constant Static_Value :=
+              Evaluate (As_Selected_Component (Expr).Prefix, Env, Current);
+            Name : constant String :=
+              Spelling_Of (Definition_Of (As_Selected_Component (Expr).Selector));
+         begin
+            if Rec.Kind /= Record_Value then
+               raise Interpretation_Error with "selecting from a non-record value";
+            elsif not Env.Records (Rec.Fields).Contains (Name) then
+               raise Interpretation_Error with "no such component: " & Name;
+            end if;
+            return Env.Records (Rec.Fields).Element (Name);
          end;
 
       elsif Is_Parenthesized_Expression (Expr) then
@@ -756,8 +891,43 @@ package body Diana.Interpreter is
                      raise Interpretation_Error with
                        "assignment through a null or non-access value";
                   end if;
-                  Env.Heap.Replace_Element (Acc.Address, Value);
+                  Env.Heap.Replace_Element (Acc.Address, Copy (Env, Value));
                end;
+
+            elsif Is_Indexed_Component (Target) then  --  A (I) := Value
+               declare
+                  Arr : constant Static_Value :=
+                    Evaluate (As_Indexed_Component (Target).Prefix, Env, Current);
+                  Indices : constant Node_List :=
+                    As_Expression_S (As_Indexed_Component (Target).Indices).List;
+                  I : Long_Long_Integer;
+               begin
+                  if Arr.Kind /= Array_Value then
+                     raise Interpretation_Error with "indexing a non-array value";
+                  end if;
+                  I := Whole_Of (Evaluate (Indices (1), Env, Current));
+                  if I < 1
+                    or else I > Long_Long_Integer (Env.Arrays (Arr.Elements).Length)
+                  then
+                     raise Interpretation_Error with "array index out of range";
+                  end if;
+                  Env.Arrays.Reference (Arr.Elements).Replace_Element
+                    (Positive (I), Copy (Env, Value));
+               end;
+
+            elsif Is_Selected_Component (Target) then  --  R.Field := Value
+               declare
+                  Rec : constant Static_Value :=
+                    Evaluate (As_Selected_Component (Target).Prefix, Env, Current);
+                  Name : constant String := Spelling_Of
+                    (Definition_Of (As_Selected_Component (Target).Selector));
+               begin
+                  if Rec.Kind /= Record_Value then
+                     raise Interpretation_Error with "selecting from a non-record value";
+                  end if;
+                  Env.Records.Reference (Rec.Fields).Include (Name, Copy (Env, Value));
+               end;
+
             else
                Assign (Env, Current, Spelling_Of (Definition_Of (Target)), Value);
             end if;

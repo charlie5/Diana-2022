@@ -115,6 +115,17 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("P")));
    Q_Def : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Q")));
+   --  aggregate demo: an array, its (value) copy, a record, and two fields.
+   Arr_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Arr")));
+   Cpy_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Cpy")));
+   Rec_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Rec")));
+   X_Field : constant Cursor :=
+     Add (B.Component_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Y_Field : constant Cursor :=
+     Add (B.Component_Name (Spelling => SU.To_Unbounded_String ("Y")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -293,6 +304,34 @@ procedure Interp_Demo is
    function Assign_To (Target, Source : Cursor) return Cursor is
      (Add (B.Assignment (Target => Target, Source => Source)));
 
+   --  array aggregate "(e1, e2, ...)" and indexing "A (I)".
+   function Arr (Elements : Cursor_Array) return Cursor is
+      Items : Node_List;
+   begin
+      for E of Elements loop
+         Items.Append (Add (B.Positional_Association (Value => E)));
+      end loop;
+      return Add (B.Aggregate (Associations => Add (B.Association_S (List => Items))));
+   end Arr;
+   function Index_At (Array_Ref, Index_Expr : Cursor) return Cursor is
+     (Add (B.Indexed_Component
+             (Prefix  => Array_Ref,
+              Indices => Add (B.Expression_S (List => NL ([Index_Expr]))))));
+
+   --  record aggregate "(Field => Value, ...)" and selection "R.Field".
+   function Field_Assoc (Field_Def, Value : Cursor) return Cursor is
+     (Add (B.Named_Association
+             (Choices => Add (B.Choice_S (List => NL
+               ([Add (B.Choice_Expression
+                        (Value => Add (B.Used_Name (Definition => Field_Def))))]))),
+              Actual  => Value)));
+   function Rec (Fields : Cursor_Array) return Cursor is
+     (Add (B.Aggregate (Associations => Add (B.Association_S (List => NL (Fields))))));
+   function Field_Of (Record_Ref, Field_Def : Cursor) return Cursor is
+     (Add (B.Selected_Component
+             (Prefix   => Record_Ref,
+              Selector => Add (B.Used_Name (Definition => Field_Def)))));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -451,6 +490,21 @@ procedure Interp_Demo is
            Print (Deref (Ref (Q_Def))),                                    -- 42
            Print (Bin (Op_Eq, Ref (P_Def), Ref (Q_Def)))]);               -- True
 
+   --  Arr := (10, 20, 30);  Cpy := Arr;  Arr (2) := 99;
+   --  Put_Line (Arr (2)); Put_Line (Cpy (2));   -- 99, then 20 (value copy)
+   --  Rec := (X => 1, Y => 2);  Rec.Y := 5;  Put_Line (Rec.X); Put_Line (Rec.Y);
+   Aggregate_Program : constant Cursor :=
+     Seq ([Assign (Arr_Def, Arr ([Lit (10), Lit (20), Lit (30)])),
+           Assign (Cpy_Def, Ref (Arr_Def)),
+           Assign_To (Index_At (Ref (Arr_Def), Lit (2)), Lit (99)),
+           Print (Index_At (Ref (Arr_Def), Lit (2))),                      -- 99
+           Print (Index_At (Ref (Cpy_Def), Lit (2))),                      -- 20
+           Assign (Rec_Def, Rec ([Field_Assoc (X_Field, Lit (1)),
+                                  Field_Assoc (Y_Field, Lit (2))])),
+           Assign_To (Field_Of (Ref (Rec_Def), Y_Field), Lit (5)),
+           Print (Field_Of (Ref (Rec_Def), X_Field)),                      -- 1
+           Print (Field_Of (Ref (Rec_Def), Y_Field))]);                    -- 5
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -575,6 +629,18 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Access_Program);
+
+   --  Array and record aggregates: construction, indexing / selection,
+   --  component assignment, and composite value semantics.
+   New_Line;
+   Put_Line ("Executing (array + record aggregates):");
+   Put_Line ("    Arr := (10, 20, 30); Cpy := Arr; Arr (2) := 99;");
+   Put_Line ("    Put_Line (Arr (2)); Put_Line (Cpy (2));   -- Cpy is a value copy");
+   Put_Line ("    Rec := (X => 1, Y => 2); Rec.Y := 5;");
+   Put_Line ("    Put_Line (Rec.X); Put_Line (Rec.Y);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Aggregate_Program);
 
    --  The execute-or-error requirement: an unbound variable and a null
    --  dereference must both fail rather than produce a wrong answer.
