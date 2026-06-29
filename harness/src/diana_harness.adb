@@ -4,11 +4,15 @@
 --  entity ("Foo") in a unit ("P") that has NOT been compiled yet, then shows
 --  the two required behaviours: error out on the missing separate compilation,
 --  and resolve the reference in place once that compilation is merged in.
+--
+--  The user-program nodes are the generated DIANA IR (Diana.Nodes); the
+--  pending-unit bookkeeping is Diana.Loading.
 
 with Ada.Text_IO;    use Ada.Text_IO;
 with Ada.Exceptions;
 with Diana;          use Diana;
-with Diana.Nodes;   use Diana.Nodes;
+with Diana.Nodes;
+with Diana.Loading;
 with Diana.Library;
 
 procedure Diana_Harness is
@@ -21,18 +25,18 @@ procedure Diana_Harness is
    procedure Show_Resolution is
       Used : constant Node'Class := Trees.Element (Use_Site);
    begin
-      if Used in Used_Name'Class then
+      if Used in Diana.Nodes.Used_Name'Class then
          declare
-            Def : constant Cursor := Used_Name (Used).Definition;
-            Tgt : constant Node'Class := Trees.Element (Def);
+            Def : constant Cursor      := Diana.Nodes.Used_Name (Used).Definition;
+            Tgt : constant Node'Class  := Trees.Element (Def);
          begin
-            if Tgt in Defining_Name'Class then
+            if Tgt in Diana.Nodes.Defining_Occurrence'Class then
                Put_Line ("    'Foo' resolves to defining name """
-                         & SU.To_String (Defining_Name (Tgt).Spelling)
+                         & SU.To_String (Diana.Nodes.Defining_Occurrence (Tgt).Spelling)
                          & """ (a loaded compilation).");
-            elsif Tgt in Pending_Unit'Class then
+            elsif Tgt in Diana.Loading.Pending_Unit'Class then
                Put_Line ("    'Foo' still points at the stub for unit """
-                         & SU.To_String (Pending_Unit (Tgt).Unit_Name)
+                         & SU.To_String (Diana.Loading.Pending_Unit (Tgt).Unit_Name)
                          & """ (unresolved).");
             end if;
          end;
@@ -43,13 +47,14 @@ begin
    New_Line;
 
    --  1. Main compilation uses P.Foo; P is only with'ed, so it is a stub.
-   Main     := Lib.Add_Compilation ("Main");
-   P_Stub   := Lib.Require ("P");
-   Use_Site := Lib.Add_Child
-     (Main,
-      Used_Name'(Node with
-                   Spelling   => SU.To_Unbounded_String ("Foo"),
-                   Definition => P_Stub));
+   Main   := Lib.Add_Compilation ("Main");
+   P_Stub := Lib.Require ("P");
+   declare
+      Used : Diana.Nodes.Used_Name;     --  a used occurrence of P.Foo
+   begin
+      Used.Definition := P_Stub;        --  initially unresolved (points at the stub)
+      Use_Site := Lib.Add_Child (Main, Used);
+   end;
    Lib.Reference (Name => "P", Site => Use_Site, Wanted => "Foo");
 
    Put_Line ("Built 'Main', which references entity 'Foo' in unit 'P'.");

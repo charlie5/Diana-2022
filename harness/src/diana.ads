@@ -20,6 +20,7 @@
 --  ===========================================================================
 
 with Ada.Containers.Indefinite_Multiway_Trees;
+with Ada.Containers.Vectors;
 with Ada.Strings.Unbounded;
 
 package Diana is
@@ -52,11 +53,13 @@ package Diana is
 
    --  ---- The node hierarchy root --------------------------------------------
    --  Carries the universal lexical attributes hoisted onto the IDL Diana_Node
-   --  class.  Concrete kinds (and the abstract intermediate classes) are
-   --  declared in child units once the tree — and hence Cursor — exists.
+   --  class (named exactly as in the IDL, so generated leaf attributes never
+   --  collide with these inherited components).  Concrete kinds (and the
+   --  abstract intermediate classes) are declared in Diana.Nodes, generated
+   --  from spec/DIANA_2022.idl once the tree — and hence Cursor — exists.
    type Node is abstract tagged record
-      Position      : Source_Position := No_Position;
-      Node_Comments : Comments        := SU.Null_Unbounded_String;
+      Source_Position : Diana.Source_Position := No_Position;        -- lexical
+      Comments        : Diana.Comments := SU.Null_Unbounded_String;  -- lexical
    end record;
 
    --  ---- The library-wide structural tree -----------------------------------
@@ -69,5 +72,11 @@ package Diana is
    subtype Cursor is Trees.Cursor;
 
    No_Element : Cursor renames Trees.No_Element;
+
+   --  ---- The IDL "Seq Of T" idiom -------------------------------------------
+   --  A sequence attribute is a vector of cursors to the element subtrees.
+   package Node_Lists is new Ada.Containers.Vectors
+     (Index_Type => Positive, Element_Type => Cursor, "=" => Trees."=");
+   subtype Node_List is Node_Lists.Vector;
 
 end Diana;

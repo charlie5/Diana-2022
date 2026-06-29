@@ -13,6 +13,7 @@ The **spec is substantially complete** and the **interpretive harness has been s
 - `spec/DIANA_2022.idl` — the canonical IR spec (single-parent partitioned, referentially complete; verified by the tools below).
 - `spec/DIANA_2022_Compatibility.idl` — the Rev 3/4 `Renames` alias layer.
 - `harness/` — the Ada (GNAT) interpretive harness (see "Building & running the harness").
+- `tools/gen_nodes.pl` — generates `harness/src/diana-nodes.ads` (the full `Diana.Nodes` set, 435 tagged types) from the spec. Re-run after spec changes; the output is committed and marked generated.
 - `tools/check_partition.pl`, `tools/check_resolve.pl` — invariant checkers (single-parent partition; referential completeness). They exit non-zero on failure.
 - `Initial_instructions.md` — the authoritative requirements and style rules. Treat it as the spec for this project.
 - `Copilot_notes.txt` — an early *draft* core. Superseded by `spec/DIANA_2022.idl`; verify any claim from it against the spec and `Initial_instructions.md`.
@@ -31,7 +32,7 @@ Architecture (decided with Shark8 — see the header of `harness/src/diana.ads`)
 - IDL classes become abstract intermediate tagged types; concrete node kinds are leaves (single inheritance == the single-parent partition). "Is X an Expression?" is just `X in Expression'Class`.
 - Semantic cross-links are tree **`Cursor`s** (the in-memory form of a symbolic external label).
 - A `with`'ed-but-unloaded unit is a `Pending_Unit` **stub** child of the root that records its inbound `Referrer`s. `Diana.Library.Merge` replaces the stub with the real compilation and **fixes up those referrers in place**; `Require_All_Resolved` raises `Missing_Compilation` if any stub remains (the "error out on missing separate compilation" requirement).
-- The full node set (`Diana.Nodes`) is intended to be **generated from `spec/DIANA_2022.idl`**; only the kinds the merge machinery needs are hand-written so far.
+- The full node set (`Diana.Nodes`) is **generated from `spec/DIANA_2022.idl`** by `tools/gen_nodes.pl` (435 tagged types). The merge/stub bookkeeping types that are *not* part of the IR (`Loaded_Unit`, `Pending_Unit`, `Referrer`) live in the hand-written `Diana.Loading`.
 
 ## The IDL dialect — this is a frequent mistake
 
@@ -87,7 +88,7 @@ The interpretive harness must:
 - Execute a given DIANA tree, and **error out if execution cannot be completed** (e.g. a missing separate compilation unit) — demonstrated by `Require_All_Resolved` / `Missing_Compilation`.
 - Provide a way to **merge in separately-compiled DIANA** — demonstrated by `Diana.Library.Merge`.
 
-Still open: the tree interpreter / execution semantics, and generating the full `Diana.Nodes` set from the IDL. The current `diana_harness.adb` driver exercises the merge / error-on-missing path end to end.
+Still open: the tree interpreter / execution semantics, and a builder API over the generated nodes. The current `diana_harness.adb` driver exercises the merge / error-on-missing path end to end.
 
 ## Reference sources
 

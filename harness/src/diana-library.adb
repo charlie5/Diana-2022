@@ -1,5 +1,6 @@
 with Ada.Strings.Unbounded; use Ada.Strings.Unbounded;
-with Diana.Nodes;            use Diana.Nodes;
+with Diana.Loading;          use Diana.Loading;
+with Diana.Nodes;
 
 package body Diana.Library is
 
@@ -7,11 +8,11 @@ package body Diana.Library is
 
    function Root_Of (Lib : Instance) return Cursor is (Lib.Forest.Root);
 
-   --  Name of a unit node (Compilation_Node or Pending_Unit); "" otherwise.
+   --  Name of a unit node (Loaded_Unit or Pending_Unit); "" otherwise.
    function Unit_Name_Of (N : Node'Class) return String is
    begin
-      if N in Compilation_Node'Class then
-         return To_String (Compilation_Node (N).Name);
+      if N in Loaded_Unit'Class then
+         return To_String (Loaded_Unit (N).Unit_Name);
       elsif N in Pending_Unit'Class then
          return To_String (Pending_Unit (N).Unit_Name);
       else
@@ -37,7 +38,7 @@ package body Diana.Library is
    begin
       Lib.Forest.Append_Child
         (Lib.Forest.Root,
-         Compilation_Node'(Node with Name => To_Unbounded_String (Name)));
+         Loaded_Unit'(Node with Unit_Name => To_Unbounded_String (Name)));
       return Trees.Last_Child (Lib.Forest.Root);
    end Add_Compilation;
 
@@ -89,8 +90,8 @@ package body Diana.Library is
 
       procedure Retarget (E : in out Node'Class) is
       begin
-         if E in Used_Name'Class then
-            Used_Name (E).Definition := Target;
+         if E in Diana.Nodes.Used_Name'Class then
+            Diana.Nodes.Used_Name (E).Definition := Target;
          end if;
       end Retarget;
    begin
@@ -101,10 +102,15 @@ package body Diana.Library is
          Refs := Pending_Unit (Trees.Element (Stub)).Referrers;
       end if;
 
-      --  Build the real compilation and its single declared entity.
+      --  Build the real compilation and its single declared entity (modelled,
+      --  for this demo, as a defining-name node carrying the entity spelling).
       Comp := Add_Compilation (Lib, Name);
-      Lib.Forest.Append_Child
-        (Comp, Defining_Name'(Node with Spelling => To_Unbounded_String (Declared)));
+      declare
+         Entity : Diana.Nodes.Variable_Name;
+      begin
+         Entity.Spelling := To_Unbounded_String (Declared);
+         Lib.Forest.Append_Child (Comp, Entity);
+      end;
       Def := Trees.Last_Child (Comp);
 
       --  Re-target every referrer that wanted the declared entity, in place.
