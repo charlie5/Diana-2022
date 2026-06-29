@@ -318,6 +318,18 @@ procedure Interp_Demo is
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Dollars")));
    Euros_Type   : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Euros")));
+   --  scalar-generic-formal-type demo: the formal signed-integer type "Value",
+   --  Clamp's three parameters, and the actual range type "Level".
+   Value_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Value")));
+   Clamp_X    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Clamp_Lo   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Lo")));
+   Clamp_Hi   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Hi")));
+   Level_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Level")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -543,6 +555,11 @@ procedure Interp_Demo is
              (Name       => Name_Def,
               Definition => Add (B.Formal_Derived_Type
                 (Parent => Add (B.Used_Name (Definition => Parent_Def)))))));
+   --  a "type Name is range <>;" generic formal (signed integer) scalar type.
+   function Generic_Scalar_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Signed_Integer))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1604,6 +1621,44 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Net_Dollars, [Lit (100)])),
            Print (Sub_Call (Net_Euros,   [Lit (5)]))]);
 
+   --  generic
+   --     type Value is range <>;          -- a formal scalar type (ordered)
+   --  function Clamp (X, Lo, Hi : Value) return Value is
+   --  begin
+   --     if X < Lo then return Lo; elsif X > Hi then return Hi;
+   --     else return X; end if;            -- uses scalar ordering (< and >)
+   --  end Clamp;
+   Clamp : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Clamp"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Scalar_Formal (Value_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (Clamp_X), In_Par (Clamp_Lo),
+                                       In_Par (Clamp_Hi)]))),
+             Completion    => Blk ([],
+               [If_Else (Bin (Op_Lt, Ref (Clamp_X), Ref (Clamp_Lo)),
+                         Seq ([Ret (Ref (Clamp_Lo))]),
+                         Seq ([If_Else (Bin (Op_Gt, Ref (Clamp_X), Ref (Clamp_Hi)),
+                                        Seq ([Ret (Ref (Clamp_Hi))]),
+                                        Seq ([Ret (Ref (Clamp_X))]))]))])));
+
+   --  type Level is range 0 .. 100;
+   --  function Clamp_Level is new Clamp (Level);
+   Clamp_Level : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Clamp_Level"),
+             Completion => Instance_Of (Clamp,
+               [Add (B.Used_Name (Definition => Level_Type))])));
+
+   --  Put_Line (Clamp_Level (150, 0, 100));  -- 100
+   --  Put_Line (Clamp_Level (50,  0, 100));  -- 50
+   --  Put_Line (Clamp_Level (-5,  0, 100));  -- 0
+   Scalar_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Clamp_Level, [Lit (150), Lit (0), Lit (100)])),
+           Print (Sub_Call (Clamp_Level, [Lit (50),  Lit (0), Lit (100)])),
+           Print (Sub_Call (Clamp_Level, [Lit (-5),  Lit (0), Lit (100)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2067,6 +2122,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Derived_Formal_Program);
+
+   --  Formal scalar types: a formal "range <>" type is ordered, so the template
+   --  may compare its values (< and >) — operations a private/interface formal
+   --  type lacks; instantiated with a concrete range type.
+   New_Line;
+   Put_Line ("Executing (formal scalar types):");
+   Put_Line ("    generic type Value is range <>;");
+   Put_Line ("    function Clamp (X, Lo, Hi : Value) return Value is");
+   Put_Line ("       begin if X < Lo then return Lo; elsif X > Hi then return Hi;");
+   Put_Line ("             else return X; end if; end;");
+   Put_Line ("    type Level is range 0 .. 100; function Clamp_Level is new Clamp (Level);");
+   Put_Line ("    Put_Line (Clamp_Level (150,0,100)); ... (50,0,100); ... (-5,0,100);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Scalar_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
