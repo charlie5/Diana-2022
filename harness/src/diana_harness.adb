@@ -1016,4 +1016,101 @@ begin
          end;
       end;
    end;
+   New_Line;
+
+   --  17. Separate compilation of a SUBUNIT OF A CHILD PACKAGE OF A GENERIC
+   --      PACKAGE.  'Vault.Sealed' is a child of the generic package 'Vault'
+   --      (so itself generic, used through a parent instance); its body carries
+   --      "procedure Unlock is separate;", a subunit 'Vault.Sealed.Unlock'
+   --      separately compiled and completed once the child generic is present.
+   Put_Line ("Separate compilation of a subunit of a child package "
+             & "of a generic package:");
+   declare
+      Client11    : constant Cursor := Lib.Add_Compilation ("Client11");
+      Vault_Stub  : constant Cursor := Lib.Require ("Vault");
+      Sealed_Stub : constant Cursor := Lib.Require ("Vault.Sealed");
+      --  "package V_Inst is new Vault;" — a local instance of the generic parent
+      Parent_Inst : constant Cursor := Lib.Add_Child
+        (Client11, Diana.Builders.Package_Name
+                     (Spelling => SU.To_Unbounded_String ("V_Inst")));
+      Inst1_Ref   : constant Cursor := Lib.Add_Child
+        (Client11, Diana.Builders.Used_Name (Definition => Vault_Stub));
+      Inst1       : constant Cursor := Lib.Add_Child
+        (Client11, Diana.Builders.Generic_Instantiation (Generic_Unit => Inst1_Ref));
+      --  "package S_Inst is new V_Inst.Sealed;" — child of the parent INSTANCE
+      Prefix_Ref   : constant Cursor := Lib.Add_Child
+        (Client11, Diana.Builders.Used_Name (Definition => Parent_Inst));
+      Selector_Ref : constant Cursor := Lib.Add_Child
+        (Client11, Diana.Builders.Used_Name (Definition => Sealed_Stub));
+      Gen_Unit2    : constant Cursor := Lib.Add_Child
+        (Client11, Diana.Builders.Selected_Component
+                     (Prefix => Prefix_Ref, Selector => Selector_Ref));
+      Inst2        : constant Cursor := Lib.Add_Child
+        (Client11, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Unit2));
+
+      function Parent_Site return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst1).Generic_Unit);
+      function Sel return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst2).Generic_Unit);
+      function Inst_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Prefix);
+      function Child_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Selector);
+   begin
+      Lib.Reference (Name => "Vault", Site => Parent_Site, Wanted => "Vault");
+      Lib.Reference (Name => "Vault.Sealed", Site => Child_Site, Wanted => "Sealed");
+      Put_Line ("    built 'Client11': package V_Inst is new Vault;");
+      Put_Line ("                      package S_Inst is new V_Inst.Sealed;");
+      Show_Resolution (Parent_Site, "Vault");
+      Show_Resolution (Inst_Site, "V_Inst", Detail => "a local parent instance");
+      Show_Resolution (Child_Site, "Sealed");
+
+      --  merge the generic parent, then the child generic beneath it
+      Put_Line ("    merging generic parent 'Vault', then child generic "
+                & "'Vault.Sealed' ...");
+      Lib.Merge (Name => "Vault", Declared => "Vault",
+                 Kind => Diana.Library.Generic_Package_Unit);
+      Lib.Merge (Name => "Vault.Sealed", Declared => "Sealed",
+                 Kind => Diana.Library.Generic_Package_Unit, Parent => "Vault");
+      Show_Resolution (Child_Site, "Sealed", Detail => "a child of generic Vault");
+
+      --  the child generic's body has "procedure Unlock is separate;"
+      declare
+         Child_Body : constant Cursor := Lib.Require ("Vault.Sealed");  -- loaded child
+         Unlock_Id  : constant Cursor := Lib.Add_Child
+           (Child_Body, Diana.Builders.Subprogram_Name
+                          (Spelling => SU.To_Unbounded_String ("Unlock")));
+         Stub_Node  : constant Cursor := Lib.Add_Child
+           (Child_Body, Diana.Builders.Stub);
+         Unlock_Body : constant Cursor := Lib.Add_Child
+           (Child_Body, Diana.Builders.Subprogram_Body
+                          (Designator => Unlock_Id, Completion => Stub_Node));
+      begin
+         Lib.Reference (Name => "Vault.Sealed.Unlock",
+                        Site => Unlock_Body, Wanted => "Unlock");
+         Put_Line ("    'Vault.Sealed' body has: procedure Unlock is separate;");
+         Show_Body_Status (Unlock_Body, "Unlock");
+
+         Put_Line ("    attempting to run with subunit "
+                   & "'Vault.Sealed.Unlock' missing ...");
+         begin
+            Lib.Require_All_Resolved;
+            Put_Line ("    (unexpected) library reported fully resolved");
+         exception
+            when E : Diana.Library.Missing_Compilation =>
+               Put_Line ("    errored out as required: "
+                         & Ada.Exceptions.Exception_Message (E));
+         end;
+
+         Put_Line ("    merging subunit 'Vault.Sealed.Unlock' of the child "
+                   & "generic ...");
+         Lib.Merge_Subunit (Name   => "Vault.Sealed.Unlock",
+                            Parent => "Vault.Sealed");
+         Show_Body_Status (Unlock_Body, "Unlock");
+
+         Lib.Require_All_Resolved;
+         Put_Line ("    all separate compilations present — child of a generic "
+                   & "and its subunit body both resolved.");
+      end;
+   end;
 end Diana_Harness;
