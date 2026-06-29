@@ -48,11 +48,16 @@ package Diana.Library is
    --  to it.  Parent (non-empty) makes this a child unit, loaded beneath its
    --  parent's compilation; the parent must already be compiled (else
    --  Missing_Compilation), modelling a child unit's dependency on its parent.
+   --  Nested (non-empty) additionally declares a generic package nested inside
+   --  this (package) unit's specification: a single separate compilation brings
+   --  in both the unit and its nested generic, so referrers wanting either the
+   --  unit's entity or the nested generic are resolved by this one merge.
    procedure Merge (Lib      : in out Instance;
                     Name     : String;
                     Declared : String;
                     Kind     : Unit_Kind := Object_Unit;
-                    Parent   : String := "");
+                    Parent   : String := "";
+                    Nested   : String := "");
 
    function Is_Pending (Lib : Instance; Name : String) return Boolean;
 

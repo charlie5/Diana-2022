@@ -26,7 +26,10 @@ procedure Diana_Harness is
    --  Report what the used occurrence at Site currently resolves to.  A
    --  Generic_Name is reported specially (it is a separately-compiled generic);
    --  note it is also a Defining_Occurrence, so it must be checked first.
-   procedure Show_Resolution (Site : Cursor; What : String) is
+   --  Detail overrides the parenthetical note for a resolved entity.
+   procedure Show_Resolution (Site : Cursor; What : String; Detail : String := "") is
+      function Note (Default : String) return String is
+        (if Detail = "" then Default else Detail);
    begin
       if Diana.Accessors.Is_Used_Name (Site) then
          declare
@@ -35,11 +38,11 @@ procedure Diana_Harness is
             if Diana.Accessors.Is_Generic_Name (Def) then
                Put_Line ("    '" & What & "' resolves to generic package """
                          & SU.To_String (Diana.Accessors.As_Generic_Name (Def).Spelling)
-                         & """ (a separately-compiled generic).");
+                         & """ (" & Note ("a separately-compiled generic") & ").");
             elsif Diana.Accessors.Is_Package_Name (Def) then
                Put_Line ("    '" & What & "' resolves to package """
                          & SU.To_String (Diana.Accessors.As_Package_Name (Def).Spelling)
-                         & """ (a loaded compilation).");
+                         & """ (" & Note ("a loaded compilation") & ").");
             elsif Diana.Accessors.Is_Defining_Occurrence (Def) then
                Put_Line ("    '" & What & "' resolves to defining name """
                          & SU.To_String (Diana.Accessors.As_Defining_Occurrence (Def).Spelling)
@@ -222,5 +225,68 @@ begin
       Lib.Require_All_Resolved;
       Put_Line ("    all separate compilations present — "
                 & "'Buffers.Bounded' loaded beneath 'Buffers'.");
+   end;
+   New_Line;
+
+   --  7. Separate compilation of a NESTED generic package.  'Client3'
+   --     instantiates 'Registry.Cache', a generic package nested inside the
+   --     specification of package 'Registry'.  Unlike a child unit, the nested
+   --     generic is NOT a separate compilation: only 'Registry' is a stub, and
+   --     both references of the compound-name instantiation — the prefix
+   --     'Registry' and the selector 'Cache' (an entity *within* 'Registry') —
+   --     are resolved by the single merge that brings 'Registry' in.
+   Put_Line ("Separate compilation of a nested generic package:");
+   declare
+      Client3      : constant Cursor := Lib.Add_Compilation ("Client3");
+      Outer_Stub   : constant Cursor := Lib.Require ("Registry");
+      Prefix_Ref   : constant Cursor := Lib.Add_Child
+        (Client3, Diana.Builders.Used_Name (Definition => Outer_Stub));
+      Selector_Ref : constant Cursor := Lib.Add_Child
+        (Client3, Diana.Builders.Used_Name (Definition => Outer_Stub));
+      --  the generic name "Registry.Cache" as a selected component
+      Gen_Unit     : constant Cursor := Lib.Add_Child
+        (Client3, Diana.Builders.Selected_Component
+                    (Prefix => Prefix_Ref, Selector => Selector_Ref));
+      --  "package My_Cache is new Registry.Cache;"
+      Inst         : constant Cursor := Lib.Add_Child
+        (Client3, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Unit));
+
+      function Selected return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+      function Outer_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Selected).Prefix);
+      function Nested_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Selected).Selector);
+   begin
+      --  both referrers are recorded against the SAME unit 'Registry': the
+      --  selector wants 'Cache', an entity nested inside 'Registry'.
+      Lib.Reference (Name => "Registry", Site => Outer_Site, Wanted => "Registry");
+      Lib.Reference (Name => "Registry", Site => Nested_Site, Wanted => "Cache");
+      Put_Line ("    built 'Client3': package My_Cache is new Registry.Cache;");
+      Show_Resolution (Outer_Site, "Registry");
+      Show_Resolution (Nested_Site, "Cache");
+
+      Put_Line ("    attempting to run with 'Registry' missing ...");
+      begin
+         Lib.Require_All_Resolved;
+         Put_Line ("    (unexpected) library reported fully resolved");
+      exception
+         when E : Diana.Library.Missing_Compilation =>
+            Put_Line ("    errored out as required: "
+                      & Ada.Exceptions.Exception_Message (E));
+      end;
+
+      --  one merge brings in 'Registry' and its nested generic 'Cache'
+      Put_Line ("    merging package 'Registry' (with nested generic 'Cache') ...");
+      Lib.Merge (Name     => "Registry",
+                 Declared => "Registry",
+                 Kind     => Diana.Library.Package_Unit,
+                 Nested   => "Cache");
+      Show_Resolution (Outer_Site, "Registry");
+      Show_Resolution (Nested_Site, "Cache",
+                       Detail => "a generic nested in Registry");
+
+      Lib.Require_All_Resolved;
+      Put_Line ("    all separate compilations present — one merge resolved both.");
    end;
 end Diana_Harness;

@@ -101,14 +101,17 @@ package body Diana.Library is
    end Reference;
 
    procedure Merge (Lib : in out Instance; Name : String; Declared : String;
-                    Kind : Unit_Kind := Object_Unit; Parent : String := "") is
-      Stub   : constant Cursor := Find_Unit (Lib, Name);
-      Refs   : Referrer_Vectors.Vector;
-      Home   : Cursor := Lib.Forest.Root;   --  where the loaded unit is appended
-      Comp   : Cursor;
-      Def    : Cursor;
-      Target : Cursor;
-      Doomed : Cursor;
+                    Kind : Unit_Kind := Object_Unit; Parent : String := "";
+                    Nested : String := "") is
+      Stub       : constant Cursor := Find_Unit (Lib, Name);
+      Refs       : Referrer_Vectors.Vector;
+      Home       : Cursor := Lib.Forest.Root;  --  where the loaded unit is appended
+      Comp       : Cursor;
+      Outer_Spec : Cursor := No_Element;       --  the package spec (if any)
+      Def        : Cursor;
+      Nested_Def : Cursor := No_Element;       --  the nested generic (if any)
+      Target     : Cursor;
+      Doomed     : Cursor;
 
       procedure Retarget (E : in out Node'Class) is
       begin
@@ -154,11 +157,12 @@ package body Diana.Library is
                  (Spelling => To_Unbounded_String (Declared)));
          when Package_Unit =>
             Lib.Forest.Append_Child (Comp, Diana.Builders.Package_Specification);
+            Outer_Spec := Trees.Last_Child (Comp);
             Lib.Forest.Append_Child
               (Comp,
                Diana.Builders.Package_Name
                  (Spelling      => To_Unbounded_String (Declared),
-                  Specification => Trees.Last_Child (Comp)));
+                  Specification => Outer_Spec));
          when Generic_Package_Unit =>
             Lib.Forest.Append_Child (Comp, Diana.Builders.Package_Specification);
             Lib.Forest.Append_Child
@@ -169,10 +173,32 @@ package body Diana.Library is
       end case;
       Def := Trees.Last_Child (Comp);
 
-      --  Re-target every referrer that wanted the declared entity, in place.
+      --  A generic package NESTED inside this unit's specification: declared as
+      --  part of the same compilation (not a separate unit), so this one merge
+      --  also makes it available.  It hangs inside the package spec.
+      if Nested /= "" then
+         declare
+            Host : constant Cursor :=
+              (if Outer_Spec /= No_Element then Outer_Spec else Comp);
+         begin
+            Lib.Forest.Append_Child (Host, Diana.Builders.Package_Specification);
+            Lib.Forest.Append_Child
+              (Host,
+               Diana.Builders.Generic_Name
+                 (Spelling      => To_Unbounded_String (Nested),
+                  Specification => Trees.Last_Child (Host)));
+            Nested_Def := Trees.Last_Child (Host);
+         end;
+      end if;
+
+      --  Re-target every referrer in place: those wanting the unit's entity to
+      --  it, and those wanting the nested generic to the nested generic.
       for R of Refs loop
          if To_String (R.Wanted) = Declared then
             Target := Def;
+            Lib.Forest.Update_Element (R.Site, Retarget'Access);
+         elsif Nested /= "" and then To_String (R.Wanted) = Nested then
+            Target := Nested_Def;
             Lib.Forest.Update_Element (R.Site, Retarget'Access);
          end if;
       end loop;
