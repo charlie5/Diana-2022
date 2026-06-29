@@ -1057,7 +1057,17 @@ package body Diana.Interpreter is
          return Evaluate (As_Parenthesized_Expression (Expr).Operand, Env, Current);
 
       elsif Is_Used_Object (Expr) or else Is_Used_Name (Expr) then
-         return Lookup (Env, Current, Spelling_Of (Definition_Of (Expr)));
+         declare
+            Def : constant Cursor := Definition_Of (Expr);
+         begin
+            --  an enumeration literal is its position; other names are looked up
+            if Is_Enumeration_Literal_Name (Def) then
+               return Int (Long_Long_Integer
+                             (As_Enumeration_Literal_Name (Def).Position));
+            else
+               return Lookup (Env, Current, Spelling_Of (Def));
+            end if;
+         end;
 
       elsif Is_Attribute_Reference (Expr) then                --  Prefix'Attribute
          declare

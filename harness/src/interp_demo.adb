@@ -155,6 +155,21 @@ procedure Interp_Demo is
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Exception_Message")));
    ExcName_Name : constant Cursor :=
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Exception_Name")));
+   --  enumeration demo: "type Color is (Red, Green, Blue)" -- literals carry
+   --  their 0-based position, which is how the interpreter represents them.
+   Color_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Color")));
+   Red_Lit    : constant Cursor :=
+     Add (B.Enumeration_Literal_Name (Spelling => SU.To_Unbounded_String ("Red"),
+                                      Position => 0));
+   Green_Lit  : constant Cursor :=
+     Add (B.Enumeration_Literal_Name (Spelling => SU.To_Unbounded_String ("Green"),
+                                      Position => 1));
+   Blue_Lit   : constant Cursor :=
+     Add (B.Enumeration_Literal_Name (Spelling => SU.To_Unbounded_String ("Blue"),
+                                      Position => 2));
+   C_Var      : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("C")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -292,6 +307,8 @@ procedure Interp_Demo is
    --  Case choices and alternatives.
    function Val_Choice (V : Integer) return Cursor is
      (Add (B.Choice_Expression (Value => Lit (V))));
+   function Choice_Expr (Value : Cursor) return Cursor is  -- a value choice
+     (Add (B.Choice_Expression (Value => Value)));
    function Range_Choice (Low, High : Integer) return Cursor is
      (Add (B.Choice_Range (Range_Item => Add (B.Range_Bounds (Lower => Lit (Low),
                                                               Upper => Lit (High))))));
@@ -734,6 +751,26 @@ procedure Interp_Demo is
                          Attr (Ref (Arr_Def), Last_Attr),
                          Seq ([Print (Index_At (Ref (Arr_Def), Ref (I_Def)))]))]);
 
+   --  type Color is (Red, Green, Blue);  C := Green;
+   --  case C is when Red => 10; when Green => 20; when Blue => 30; end case;  -- 20
+   --  Total := 0; for I in Red .. Blue loop Total := Total + 1; end loop;     -- 3
+   Enum_Program : constant Cursor :=
+     Block_Stmt
+       ([Type_Decl (Color_Type,
+           Add (B.Enumeration_Type (Literals => Add (B.Defining_Name_S
+             (List => NL ([Red_Lit, Green_Lit, Blue_Lit]))))),
+           [])],
+        [Assign (C_Var, Ref (Green_Lit)),
+         Case_Of (Ref (C_Var),
+            [Alt ([Choice_Expr (Ref (Red_Lit))],   Seq ([Print (Lit (10))])),
+             Alt ([Choice_Expr (Ref (Green_Lit))], Seq ([Print (Lit (20))])),
+             Alt ([Choice_Expr (Ref (Blue_Lit))],  Seq ([Print (Lit (30))]))]),
+         Assign (Total_Def, Lit (0)),
+         For_In_Range (I_Def, Ref (Red_Lit), Ref (Blue_Lit),
+                       Seq ([Assign (Total_Def,
+                                     Bin (Op_Plus, Ref (Total_Def), Lit (1)))])),
+         Print (Ref (Total_Def))]);
+
    --  function Double (X : Integer) return Integer
    --     with Pre => X >= 0, Post => Result = X + X is begin return X + X; end;
    Double_Name : constant Cursor :=
@@ -1112,6 +1149,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Attribute_Program);
+
+   --  Enumeration-typed case and for (literals are their 0-based position).
+   New_Line;
+   Put_Line ("Executing (enumeration case + for):");
+   Put_Line ("    type Color is (Red, Green, Blue);  C := Green;");
+   Put_Line ("    case C is when Red => 10; when Green => 20; when Blue => 30; end case;");
+   Put_Line ("    Total := 0; for I in Red .. Blue loop Total := Total + 1; end loop;");
+   Put_Line ("    Put_Line (Total);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Enum_Program);
 
    --  Runtime contract checks: a pragma Assert that holds, and a subprogram
    --  Pre/Post that hold.
