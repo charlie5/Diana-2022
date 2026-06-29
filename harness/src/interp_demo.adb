@@ -344,6 +344,14 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("P")));
    Ptr_Q     : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Q")));
+   --  array-generic-formal-type demo: the formal array type "Vec", Edges'
+   --  parameter, and the actual array type "Row".
+   Vec_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Vec")));
+   FPL_A    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   Row_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Row")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -579,6 +587,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Access_To_Object))));
+   --  a "type Name is array (...) of ...;" generic formal array type.
+   function Generic_Array_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Array_Type))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1708,6 +1721,36 @@ procedure Interp_Demo is
          Var_Decl (Ptr_Q, New_Int (12))],
         [Print (Sub_Call (Sum_Cells, [Ref (Ptr_P), Ref (Ptr_Q)]))]);
 
+   --  generic
+   --     type Vec is array (Integer range <>) of Integer;   -- a formal array type
+   --  function Edges (A : Vec) return Integer is
+   --  begin return A (A'First) + A (A'Last); end;   -- indexing + 'First / 'Last
+   First_Plus_Last : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Edges"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Array_Formal (Vec_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (FPL_A)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus,
+               Index_At (Ref (FPL_A), Attr (Ref (FPL_A), First_Attr)),
+               Index_At (Ref (FPL_A), Attr (Ref (FPL_A), Last_Attr))))])));
+
+   --  type Row is array (Integer range <>) of Integer;
+   --  function Edges is new First_Plus_Last (Row);
+   Edges : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Edges"),
+             Completion => Instance_Of (First_Plus_Last,
+               [Add (B.Used_Name (Definition => Row_Type))])));
+
+   --  Put_Line (Edges ((10, 20, 30)));      -- 10 + 30 = 40
+   --  Put_Line (Edges ((5, 7, 9, 11)));     -- 5 + 11 = 16  (bounds adapt)
+   Array_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Edges, [Arr ([Lit (10), Lit (20), Lit (30)])])),
+           Print (Sub_Call (Edges,
+             [Arr ([Lit (5), Lit (7), Lit (9), Lit (11)])]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2201,6 +2244,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Access_Formal_Program);
+
+   --  Formal array types: a formal array type lets the template use array
+   --  operations (indexing and 'First / 'Last) on its values; instantiated with
+   --  a concrete array type and passed aggregates of differing length.
+   New_Line;
+   Put_Line ("Executing (formal array types):");
+   Put_Line ("    generic type Vec is array (Integer range <>) of Integer;");
+   Put_Line ("    function Edges (A : Vec) return Integer");
+   Put_Line ("       is begin return A (A'First) + A (A'Last); end;");
+   Put_Line ("    type Row is array (Integer range <>) of Integer;");
+   Put_Line ("    function Edges is new First_Plus_Last (Row);");
+   Put_Line ("    Put_Line (Edges ((10, 20, 30))); Put_Line (Edges ((5, 7, 9, 11)));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Array_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
