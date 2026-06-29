@@ -212,10 +212,14 @@ package body Diana.Library is
       end if;
    end Merge;
 
-   procedure Merge_Subunit (Lib : in out Instance; Name : String; Parent : String)
+   procedure Merge_Subunit (Lib : in out Instance; Name : String; Parent : String;
+                            Enclosing : String := "")
    is
+      --  the loaded compilation that carries the stub: the parent itself for an
+      --  ordinary subunit, or an enclosing compilation for a nested-generic one.
+      Container : constant String := (if Enclosing /= "" then Enclosing else Parent);
       Stub   : constant Cursor := Find_Unit (Lib, Name);
-      Home   : constant Cursor := Find_Unit (Lib, Parent);
+      Home   : constant Cursor := Find_Unit (Lib, Container);
       Refs   : Referrer_Vectors.Vector;
       Comp   : Cursor;
       Proper : Cursor;          --  the subunit's proper body
@@ -231,11 +235,11 @@ package body Diana.Library is
          end if;
       end Complete_Stub;
    begin
-      --  the stub being completed lives in the parent's body, so the parent
-      --  (which carries it) must already be a loaded compilation.
+      --  the stub being completed lives in the enclosing compilation's body, so
+      --  that compilation must already be loaded.
       if Home = No_Element or else Trees.Element (Home) not in Loaded_Unit'Class then
          raise Missing_Compilation with
-           "subunit '" & Name & "' needs its parent '" & Parent
+           "subunit '" & Name & "' needs its parent '" & Container
            & "' compiled first";
       end if;
 

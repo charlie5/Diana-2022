@@ -141,9 +141,11 @@ merged top-down, and a **subunit** (`Engine.Process`, an `is separate` body) who
 body stub is completed in place by `Merge_Subunit` — including a **subunit of a
 generic package** (`Allocators.Free`), where the generic is resolved via its
 instantiation and its body's separate subunit is completed once present, and a
-**subunit of a child generic package** (`Containers.Vectors.Reserve`) — the
-deepest combination, a child generic loaded beneath its parent whose body's
-separate subunit is then completed.
+**subunit of a child generic package** (`Containers.Vectors.Reserve`) — a child
+generic loaded beneath its parent whose body's separate subunit is then completed,
+and a **subunit of a nested generic package** (`Sessions.Pool.Evict`), where the
+nested generic is no unit of its own so its subunit completes a stub in the
+enclosing compilation.
 
 ## Harness requirements
 

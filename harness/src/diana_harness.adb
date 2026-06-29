@@ -674,4 +674,90 @@ begin
                    & "its subunit body both resolved.");
       end;
    end;
+   New_Line;
+
+   --  13. Separate compilation of a SUBUNIT OF A NESTED GENERIC PACKAGE.  The
+   --      generic 'Pool' is nested inside the spec of package 'Sessions' (NOT a
+   --      unit of its own — there is no 'Sessions.Pool' compilation), so its
+   --      body's "procedure Evict is separate;" subunit completes a stub that
+   --      lives in the ENCLOSING compilation 'Sessions'.  Merge_Subunit's
+   --      Enclosing parameter names that compilation (Parent => "Sessions.Pool",
+   --      Enclosing => "Sessions").
+   Put_Line ("Separate compilation of a subunit of a nested generic package:");
+   declare
+      Client8      : constant Cursor := Lib.Add_Compilation ("Client8");
+      Outer_Stub   : constant Cursor := Lib.Require ("Sessions");
+      Prefix_Ref   : constant Cursor := Lib.Add_Child
+        (Client8, Diana.Builders.Used_Name (Definition => Outer_Stub));
+      Selector_Ref : constant Cursor := Lib.Add_Child
+        (Client8, Diana.Builders.Used_Name (Definition => Outer_Stub));
+      Gen_Unit     : constant Cursor := Lib.Add_Child
+        (Client8, Diana.Builders.Selected_Component
+                    (Prefix => Prefix_Ref, Selector => Selector_Ref));
+      --  "package P is new Sessions.Pool;"
+      Inst         : constant Cursor := Lib.Add_Child
+        (Client8, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Unit));
+
+      function Sel return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+      function Outer_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Prefix);
+      function Nested_Site return Cursor is
+        (Diana.Accessors.As_Selected_Component (Sel).Selector);
+   begin
+      --  both referrers recorded against the SAME unit 'Sessions' (Pool is
+      --  nested in it), so one merge of 'Sessions' resolves both.
+      Lib.Reference (Name => "Sessions", Site => Outer_Site, Wanted => "Sessions");
+      Lib.Reference (Name => "Sessions", Site => Nested_Site, Wanted => "Pool");
+      Put_Line ("    built 'Client8': package P is new Sessions.Pool;");
+      Show_Resolution (Outer_Site, "Sessions");
+      Show_Resolution (Nested_Site, "Pool");
+
+      Put_Line ("    merging package 'Sessions' (with nested generic 'Pool') ...");
+      Lib.Merge (Name => "Sessions", Declared => "Sessions",
+                 Kind => Diana.Library.Package_Unit, Nested => "Pool");
+      Show_Resolution (Outer_Site, "Sessions");
+      Show_Resolution (Nested_Site, "Pool",
+                       Detail => "a generic nested in Sessions");
+
+      --  the nested generic's body has "procedure Evict is separate;" — a stub
+      --  in the enclosing compilation 'Sessions'.
+      declare
+         Encl       : constant Cursor := Lib.Require ("Sessions");  -- loaded
+         Evict_Id   : constant Cursor := Lib.Add_Child
+           (Encl, Diana.Builders.Subprogram_Name
+                    (Spelling => SU.To_Unbounded_String ("Evict")));
+         Stub_Node  : constant Cursor := Lib.Add_Child (Encl, Diana.Builders.Stub);
+         Evict_Body : constant Cursor := Lib.Add_Child
+           (Encl, Diana.Builders.Subprogram_Body
+                    (Designator => Evict_Id, Completion => Stub_Node));
+      begin
+         Lib.Reference (Name => "Sessions.Pool.Evict",
+                        Site => Evict_Body, Wanted => "Evict");
+         Put_Line ("    'Sessions.Pool' body has: procedure Evict is separate;");
+         Show_Body_Status (Evict_Body, "Evict");
+
+         Put_Line ("    attempting to run with subunit "
+                   & "'Sessions.Pool.Evict' missing ...");
+         begin
+            Lib.Require_All_Resolved;
+            Put_Line ("    (unexpected) library reported fully resolved");
+         exception
+            when E : Diana.Library.Missing_Compilation =>
+               Put_Line ("    errored out as required: "
+                         & Ada.Exceptions.Exception_Message (E));
+         end;
+
+         Put_Line ("    merging subunit 'Sessions.Pool.Evict' (parent nested in "
+                   & "'Sessions') ...");
+         Lib.Merge_Subunit (Name      => "Sessions.Pool.Evict",
+                            Parent    => "Sessions.Pool",
+                            Enclosing => "Sessions");
+         Show_Body_Status (Evict_Body, "Evict");
+
+         Lib.Require_All_Resolved;
+         Put_Line ("    all separate compilations present — nested generic and "
+                   & "its subunit body both resolved.");
+      end;
+   end;
 end Diana_Harness;
