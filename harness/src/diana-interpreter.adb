@@ -41,11 +41,21 @@ package body Diana.Interpreter is
 
    Global_Scope : constant Positive := 1;
 
+   --  In-flight control transfer.  At most one of Returning / Exiting / Jumping
+   --  is set; statement sequences and loops stop when one is pending and the
+   --  relevant construct (subprogram, loop, label) consumes it.
    type Environment is limited record
       Scopes       : Scope_Vectors.Vector;
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
+      Exiting      : Boolean      := False;          --  an exit is in progress
+      Exit_Target  : Symbol_Rep   := SU.Null_Unbounded_String;  -- "" = innermost
+      Jumping      : Boolean      := False;          --  a goto is in progress
+      Goto_Target  : Symbol_Rep   := SU.Null_Unbounded_String;  -- the label
    end record;
+
+   function Pending (Env : Environment) return Boolean
+     is (Env.Returning or else Env.Exiting or else Env.Jumping);
 
    --  Push a fresh scope whose enclosing scope is Parent; return its index.
    function Enter (Env : in out Environment; Parent : Natural) return Positive is
@@ -457,6 +467,9 @@ package body Diana.Interpreter is
       Run_Block_In (Comp, Env, Call);
       Result := Env.Return_Value;
       Env.Returning := False;
+      if Env.Exiting or else Env.Jumping then
+         raise Interpretation_Error with "exit or goto cannot leave a subprogram";
+      end if;
 
       --  copy out / in out formals back to their actual variables; the actual
       --  must be a name (else it is not a legal out/in out actual)
@@ -587,16 +600,91 @@ package body Diana.Interpreter is
       return False;
    end Choice_Matches;
 
+   --  Index (1-based) of the item in Items labelled Name, or 0 if none.
+   function Find_Label (Items : Node_List; Name : String) return Natural is
+   begin
+      for I in 1 .. Natural (Items.Length) loop
+         if Is_Labeled_Statement (Items (I)) then
+            for L of As_Defining_Name_S
+                       (As_Labeled_Statement (Items (I)).Labels).List
+            loop
+               if Spelling_Of (L) = Name then
+                  return I;
+               end if;
+            end loop;
+         end if;
+      end loop;
+      return 0;
+   end Find_Label;
+
    procedure Execute (Stmt : Cursor; Env : in out Environment; Current : Positive) is
    begin
       if Is_Null_Statement (Stmt) then
          null;
 
       elsif Is_Statement_S (Stmt) then
-         for S of As_Statement_S (Stmt).List loop
-            Execute (S, Env, Current);
-            exit when Env.Returning;
-         end loop;
+         --  an index loop so a goto can jump to a labelled item in THIS sequence
+         declare
+            Items : constant Node_List := As_Statement_S (Stmt).List;
+            I     : Natural := 1;
+            Target : Natural;
+         begin
+            while I <= Natural (Items.Length) loop
+               Execute (Items (I), Env, Current);
+               if Env.Returning or else Env.Exiting then
+                  exit;
+               elsif Env.Jumping then
+                  Target := Find_Label (Items, SU.To_String (Env.Goto_Target));
+                  if Target /= 0 then
+                     Env.Jumping := False;
+                     I := Target;            --  jump within this sequence
+                  else
+                     exit;                   --  propagate to the enclosing sequence
+                  end if;
+               else
+                  I := I + 1;
+               end if;
+            end loop;
+         end;
+
+      elsif Is_Labeled_Statement (Stmt) then
+         Execute (As_Labeled_Statement (Stmt).Statement, Env, Current);
+         --  a named exit targeting one of this statement's labels stops here
+         if Env.Exiting then
+            for L of As_Defining_Name_S
+                       (As_Labeled_Statement (Stmt).Labels).List
+            loop
+               if Spelling_Of (L) = SU.To_String (Env.Exit_Target) then
+                  Env.Exiting := False;
+                  exit;
+               end if;
+            end loop;
+         end if;
+
+      elsif Is_Exit_Statement (Stmt) then
+         declare
+            Loop_Name : constant Cursor := As_Exit_Statement (Stmt).Loop_Name;
+            Condition : constant Cursor := As_Exit_Statement (Stmt).Condition;
+            Fire      : Boolean := True;
+         begin
+            if Condition /= No_Element and then not Is_Void (Condition) then
+               Fire := Bool_Of (Evaluate (Condition, Env, Current));
+            end if;
+            if Fire then
+               Env.Exiting := True;
+               if Loop_Name /= No_Element and then not Is_Void (Loop_Name) then
+                  Env.Exit_Target := SU.To_Unbounded_String
+                    (Spelling_Of (Definition_Of (Loop_Name)));
+               else
+                  Env.Exit_Target := SU.Null_Unbounded_String;
+               end if;
+            end if;
+         end;
+
+      elsif Is_Goto_Statement (Stmt) then
+         Env.Jumping := True;
+         Env.Goto_Target := SU.To_Unbounded_String
+           (Spelling_Of (Definition_Of (As_Goto_Statement (Stmt).Target)));
 
       elsif Is_Block_Statement (Stmt) then
          declare
@@ -670,7 +758,7 @@ package body Diana.Interpreter is
             Statements : constant Cursor := As_Loop_Statement (Stmt).Statements;
          begin
             if Is_While_Loop (Iteration) then
-               while not Env.Returning
+               while not Pending (Env)
                  and then Bool_Of (Evaluate (As_While_Loop (Iteration).Condition,
                                              Env, Current))
                loop
@@ -712,7 +800,7 @@ package body Diana.Interpreter is
                         declare
                            V : Long_Long_Integer := Low;
                         begin
-                           while V <= High and then not Env.Returning loop
+                           while V <= High and then not Pending (Env) loop
                               Iterate (V);
                               exit when V = High;   --  guard type'Last overflow
                               V := V + 1;
@@ -722,7 +810,7 @@ package body Diana.Interpreter is
                         declare
                            V : Long_Long_Integer := High;
                         begin
-                           while V >= Low and then not Env.Returning loop
+                           while V >= Low and then not Pending (Env) loop
                               Iterate (V);
                               exit when V = Low;
                               V := V - 1;
@@ -735,6 +823,12 @@ package body Diana.Interpreter is
 
             else
                raise Interpretation_Error with "unsupported loop form";
+            end if;
+
+            --  this loop consumes an unnamed exit (it is the innermost loop);
+            --  a named exit propagates out to its matching labelled statement
+            if Env.Exiting and then SU.Length (Env.Exit_Target) = 0 then
+               Env.Exiting := False;
             end if;
          end;
 
@@ -773,6 +867,10 @@ package body Diana.Interpreter is
       Global : constant Positive := Enter (Env, 0);   --  the global scope
    begin
       Execute (Statements, Env, Global);
+      if Env.Jumping then
+         raise Interpretation_Error with
+           "goto: label not found: " & SU.To_String (Env.Goto_Target);
+      end if;
    end Run;
 
 end Diana.Interpreter;

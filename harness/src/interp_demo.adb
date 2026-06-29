@@ -48,6 +48,8 @@ procedure Interp_Demo is
    Op_Minus : constant Cursor := Add (B.Op_Minus);
    Op_Mul   : constant Cursor := Add (B.Op_Multiply);
    Op_Le    : constant Cursor := Add (B.Op_Less_Equal);
+   Op_Lt    : constant Cursor := Add (B.Op_Less);
+   Op_Eq    : constant Cursor := Add (B.Op_Equal);
    Op_Cat   : constant Cursor := Add (B.Op_Concatenate);
    Sum_Def  : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sum")));
@@ -101,6 +103,13 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
    M_Inner : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("M")));
+   --  exit / goto demo: an accumulator, a loop name, and a goto label.
+   Found_Def   : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Found")));
+   Outer_Loop  : constant Cursor :=
+     Add (B.Loop_Block_Name (Spelling => SU.To_Unbounded_String ("Outer")));
+   Again_Label : constant Cursor :=
+     Add (B.Statement_Label_Name (Spelling => SU.To_Unbounded_String ("Again")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
@@ -248,6 +257,27 @@ procedure Interp_Demo is
    function Sub_Body_Item (Designator : Cursor) return Cursor is
      (Add (B.Subprogram_Body (Designator => Designator)));
 
+   --  "if Condition then Then_Seq end if" (no else arm).
+   function If_Then (Condition, Then_Seq : Cursor) return Cursor is
+     (Add (B.If_Statement
+             (Clauses => Add (B.Conditional_Clause_S (List => NL
+               ([Add (B.Conditional_Clause (Condition  => Condition,
+                                            Statements => Then_Seq))]))))));
+
+   --  exit / named exit / goto, and a labelled statement.
+   function Exit_When (Condition : Cursor) return Cursor is
+     (Add (B.Exit_Statement (Condition => Condition)));
+   function Exit_From (Loop_Name_Def : Cursor) return Cursor is
+     (Add (B.Exit_Statement
+             (Loop_Name => Add (B.Used_Name (Definition => Loop_Name_Def)))));
+   function Goto_Stmt (Label_Def : Cursor) return Cursor is
+     (Add (B.Goto_Statement
+             (Target => Add (B.Used_Name (Definition => Label_Def)))));
+   function Labeled (Label_Def, Statement : Cursor) return Cursor is
+     (Add (B.Labeled_Statement
+             (Labels    => Add (B.Defining_Name_S (List => NL ([Label_Def]))),
+              Statement => Statement)));
+
    --  The summation program (no calls).
    Program : constant Cursor :=
      Seq ([Assign (Sum_Def, Lit (0)),
@@ -361,6 +391,42 @@ procedure Interp_Demo is
    Closure_Program : constant Cursor :=
      Seq ([Print (Sub_Call (Outer_Name, [Lit (5)]))]);
 
+   --  for J in 1 .. 3 loop if I * J = 6 then Found := I*100 + J; exit Outer; end if;
+   Inner_For : constant Cursor :=
+     For_In (J_Def, 1, 3,
+       Seq ([If_Then
+               (Bin (Op_Eq, Bin (Op_Mul, Ref (I_Def), Ref (J_Def)), Lit (6)),
+                Seq ([Assign (Found_Def,
+                              Bin (Op_Plus,
+                                   Bin (Op_Mul, Ref (I_Def), Lit (100)),
+                                   Ref (J_Def))),
+                      Exit_From (Outer_Loop)]))]));
+
+   --  Outer: for I in 1 .. 3 loop <Inner_For> end loop Outer;
+   Outer_For : constant Cursor :=
+     Labeled (Outer_Loop, For_In (I_Def, 1, 3, Seq ([Inner_For])));
+
+   --  Sum := 0; for I in 1 .. 100 loop Sum := Sum + I; exit when I = 5; end loop;
+   --  Found := 0; <Outer_For>;  Put_Line (Sum); Put_Line (Found);
+   Exit_Program : constant Cursor :=
+     Seq ([Assign (Sum_Def, Lit (0)),
+           For_In (I_Def, 1, 100,
+                   Seq ([Assign (Sum_Def, Bin (Op_Plus, Ref (Sum_Def), Ref (I_Def))),
+                         Exit_When (Bin (Op_Eq, Ref (I_Def), Lit (5)))])),
+           Print (Ref (Sum_Def)),                                          -- 15
+           Assign (Found_Def, Lit (0)),
+           Outer_For,
+           Print (Ref (Found_Def))]);                                      -- 203
+
+   --  N := 0; <<Again>> N := N + 1; if N < 3 then goto Again; end if; Put_Line (N);
+   Goto_Program : constant Cursor :=
+     Seq ([Assign (N_Def, Lit (0)),
+           Labeled (Again_Label,
+                    Assign (N_Def, Bin (Op_Plus, Ref (N_Def), Lit (1)))),
+           If_Then (Bin (Op_Lt, Ref (N_Def), Lit (3)),
+                    Seq ([Goto_Stmt (Again_Label)])),
+           Print (Ref (N_Def))]);                                          -- 3
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -454,6 +520,27 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Closure_Program);
+
+   --  exit / exit-when / named exit.
+   New_Line;
+   Put_Line ("Executing (exit, exit-when, named exit):");
+   Put_Line ("    Sum := 0; for I in 1 .. 100 loop Sum := Sum + I; exit when I = 5;");
+   Put_Line ("       end loop;  Put_Line (Sum);");
+   Put_Line ("    Found := 0; Outer: for I in 1 .. 3 loop for J in 1 .. 3 loop");
+   Put_Line ("       if I * J = 6 then Found := I * 100 + J; exit Outer; end if;");
+   Put_Line ("       end loop; end loop Outer;  Put_Line (Found);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Exit_Program);
+
+   --  goto (a backward jump forming a loop).
+   New_Line;
+   Put_Line ("Executing (goto):");
+   Put_Line ("    N := 0; <<Again>> N := N + 1;");
+   Put_Line ("    if N < 3 then goto Again; end if;  Put_Line (N);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Goto_Program);
 
    --  The execute-or-error requirement: running a use of an unbound variable
    --  must fail rather than produce a wrong answer.
