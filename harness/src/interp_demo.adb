@@ -141,6 +141,8 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    Result_Def  : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Result")));
+   Old_Attr    : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -434,6 +436,12 @@ procedure Interp_Demo is
      (Add (B.Semantic_Property
              (Identity => Add (B.Aspect_Subprogram_Variant),
               Value    => Add (B.Aspect_Expression (Value => Expr)))));
+
+   --  "Name'Old" -- the value of Name at subprogram entry (for postconditions).
+   function Old (Name_Def : Cursor) return Cursor is
+     (Add (B.Attribute_Reference
+             (Prefix    => Add (B.Used_Object (Definition => Name_Def)),
+              Attribute => Add (B.Used_Name (Definition => Old_Attr)))));
 
    --  The summation program (no calls).
    Program : constant Cursor :=
@@ -746,6 +754,39 @@ procedure Interp_Demo is
    Variant_Program : constant Cursor :=
      Block_Stmt ([Count_Decl], [Print (Sub_Call (Count_Name, [Lit (3)]))]);
 
+   --  procedure Increment (X : in out Integer) with Post => X = X'Old + 1
+   --     is begin X := X + 1; end;
+   Inc_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Increment"),
+             Specification => Proc_Spec ([In_Out_Par (Dbl_X)]),
+             Completion    => Blk ([], [Assign (Dbl_X,
+                                Bin (Op_Plus, Ref (Dbl_X), Lit (1)))])));
+   Inc_Decl : constant Cursor :=
+     Sub_Decl (Inc_Name,
+       [Post_Aspect (Bin (Op_Eq, Ref (Dbl_X),
+                          Bin (Op_Plus, Old (Dbl_X), Lit (1))))]);
+
+   --  procedure Bad_Inc (X : in out Integer) with Post => X = X'Old + 1
+   --     is begin X := X + 2;  -- adds the wrong amount, so Post fails
+   Bad_Inc_Name : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling      => SU.To_Unbounded_String ("Bad_Inc"),
+             Specification => Proc_Spec ([In_Out_Par (Dbl_X)]),
+             Completion    => Blk ([], [Assign (Dbl_X,
+                                Bin (Op_Plus, Ref (Dbl_X), Lit (2)))])));
+   Bad_Inc_Decl : constant Cursor :=
+     Sub_Decl (Bad_Inc_Name,
+       [Post_Aspect (Bin (Op_Eq, Ref (Dbl_X),
+                          Bin (Op_Plus, Old (Dbl_X), Lit (1))))]);
+
+   --  A := 10; Increment (A); Put_Line (A);   -- 11  (Post X = X'Old + 1 holds)
+   Old_Program : constant Cursor :=
+     Block_Stmt ([Inc_Decl],
+       [Assign (A_Def, Lit (10)),
+        Call_Proc (Inc_Name, [Ref (A_Def)]),
+        Print (Ref (A_Def))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -950,6 +991,15 @@ begin
    Diana.Interpreter.Run (Cases_Program);
    Diana.Interpreter.Run (Variant_Program);
 
+   --  'Old in a postcondition: the entry value of an in-out parameter.
+   New_Line;
+   Put_Line ("Executing ('Old in a postcondition):");
+   Put_Line ("    procedure Increment (X : in out Integer) with Post => X = X'Old + 1;");
+   Put_Line ("    A := 10; Increment (A); Put_Line (A);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Old_Program);
+
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
    New_Line;
@@ -1024,5 +1074,14 @@ begin
    exception
       when E : Diana.Interpreter.Assertion_Error =>
          Put_Line ("    'Stuck (5)' (recursion) -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                       -- Bad_Inc: X = X'Old + 1 fails
+        (Block_Stmt ([Bad_Inc_Decl],
+           [Assign (A_Def, Lit (10)), Call_Proc (Bad_Inc_Name, [Ref (A_Def)])]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Assertion_Error =>
+         Put_Line ("    'Bad_Inc (A)' (X'Old+2) -> " & Ada.Exceptions.Exception_Message (E));
    end;
 end Interp_Demo;

@@ -101,6 +101,7 @@ package body Diana.Interpreter is
       Records      : Record_Store.Vector;            --  record values (1-based)
       Contracts    : Contract_Maps.Map;              --  Pre/Post/Cases/Variant by name
       Variants     : Variant_Maps.Map;               --  active variant values per name
+      Old_Values   : Value_Maps.Map;                 --  'Old snapshots during a Post check
       Predicates   : Predicate_Maps.Map;             --  predicate/invariant by type name
       Constrained  : Constraint_Maps.Map;            --  variable name -> its type name
       Returning    : Boolean      := False;          --  a return is in progress
@@ -668,6 +669,7 @@ package body Diana.Interpreter is
       Result    : Static_Value;
       Name      : constant String := Spelling_Of (Definition);
       Selected  : Cursor := No_Element;   --  chosen Contract_Cases consequence
+      Old_Snap  : Value_Maps.Map;         --  parameter values at entry (for 'Old)
    begin
       if    Is_Procedure_Header (Spec) then
          Params := As_Parameter_S (As_Procedure_Header (Spec).Parameters).List;
@@ -731,7 +733,14 @@ package body Diana.Interpreter is
       if Env.Contracts.Contains (Name) then
          declare
             C : constant Contract := Env.Contracts.Element (Name);
+            Entry_Bindings : constant Value_Maps.Map := Env.Scopes (Call).Bindings;
          begin
+            --  snapshot the parameters' entry values for 'Old in the postcondition
+            for B in Entry_Bindings.Iterate loop
+               Old_Snap.Include (Value_Maps.Key (B),
+                                 Copy (Env, Value_Maps.Element (B)));
+            end loop;
+
             for Condition of C.Pre loop
                if not Bool_Of (Evaluate (Condition, Env, Call)) then
                   Leave (Env, Call);
@@ -798,9 +807,11 @@ package body Diana.Interpreter is
       --  Contract_Cases consequence, and the variant stack pop.
       if Env.Contracts.Contains (Name) then
          declare
-            C : constant Contract := Env.Contracts.Element (Name);
+            C         : constant Contract := Env.Contracts.Element (Name);
+            Saved_Old : constant Value_Maps.Map := Env.Old_Values;
          begin
             Define (Env, Call, "Result", Result);
+            Env.Old_Values := Old_Snap;        --  make 'Old visible to Post / consequences
             for Condition of C.Post loop
                if not Bool_Of (Evaluate (Condition, Env, Call)) then
                   Leave (Env, Call);
@@ -813,6 +824,7 @@ package body Diana.Interpreter is
                Leave (Env, Call);
                raise Assertion_Error with "contract case failed in " & Name;
             end if;
+            Env.Old_Values := Saved_Old;       --  restore the caller's 'Old (if any)
             if C.Variant /= No_Element and then Env.Variants.Contains (Name) then
                Env.Variants.Reference (Name).Delete_Last;
             end if;
@@ -968,6 +980,27 @@ package body Diana.Interpreter is
 
       elsif Is_Used_Object (Expr) or else Is_Used_Name (Expr) then
          return Lookup (Env, Current, Spelling_Of (Definition_Of (Expr)));
+
+      elsif Is_Attribute_Reference (Expr) then                --  Prefix'Attribute
+         declare
+            Attribute : constant String :=
+              Spelling_Of (Definition_Of (As_Attribute_Reference (Expr).Attribute));
+         begin
+            if Attribute = "Old" then
+               declare
+                  Name : constant String :=
+                    Spelling_Of (Definition_Of (As_Attribute_Reference (Expr).Prefix));
+               begin
+                  if not Env.Old_Values.Contains (Name) then
+                     raise Interpretation_Error with
+                       "'Old is only available in a postcondition, for: " & Name;
+                  end if;
+                  return Env.Old_Values.Element (Name);
+               end;
+            else
+               raise Interpretation_Error with "unsupported attribute: " & Attribute;
+            end if;
+         end;
 
       elsif Is_Declare_Expression (Expr) then
          declare
