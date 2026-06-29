@@ -1047,7 +1047,12 @@ package body Diana.Interpreter is
             Attribute : constant String :=
               Spelling_Of (Definition_Of (As_Attribute_Reference (Expr).Attribute));
          begin
-            if Attribute = "Old" then
+            if Attribute = "Result" then
+               --  F'Result in a postcondition: the function's result, bound as
+               --  "Result" by Invoke while the postcondition is checked.
+               return Lookup (Env, Current, "Result");
+
+            elsif Attribute = "Old" then
                declare
                   Name : constant String :=
                     Spelling_Of (Definition_Of (As_Attribute_Reference (Expr).Prefix));

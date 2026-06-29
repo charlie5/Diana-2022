@@ -139,8 +139,8 @@ procedure Interp_Demo is
      Add (B.Pragma_Name (Spelling => SU.To_Unbounded_String ("Assert")));
    Dbl_X       : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
-   Result_Def  : constant Cursor :=
-     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Result")));
+   Result_Attr : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Result")));
    Old_Attr    : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
    My_Error    : constant Cursor :=
@@ -447,6 +447,12 @@ procedure Interp_Demo is
              (Prefix    => Add (B.Used_Object (Definition => Name_Def)),
               Attribute => Add (B.Used_Name (Definition => Old_Attr)))));
 
+   --  "Func'Result" -- the result of Func, in its postcondition / contract case.
+   function Result_Of (Func_Def : Cursor) return Cursor is
+     (Add (B.Attribute_Reference
+             (Prefix    => Add (B.Used_Name (Definition => Func_Def)),
+              Attribute => Add (B.Used_Name (Definition => Result_Attr)))));
+
    --  "raise Exc [with Message];", a "when Exc => Stmts" handler, and a block
    --  statement with exception handlers.
    function Raise_Exc (Exc_Def : Cursor; Message : Cursor := No_Element)
@@ -674,7 +680,7 @@ procedure Interp_Demo is
    Double_Decl : constant Cursor :=
      Sub_Decl (Double_Name,
        [Pre_Aspect (Bin (Op_Ge, Ref (Dbl_X), Lit (0))),
-        Post_Aspect (Bin (Op_Eq, Ref (Result_Def),
+        Post_Aspect (Bin (Op_Eq, Result_Of (Double_Name),
                           Bin (Op_Plus, Ref (Dbl_X), Ref (Dbl_X))))]);
 
    --  N := 5; pragma Assert (N > 0); Put_Line (N);     -- assert holds -> 5
@@ -729,11 +735,11 @@ procedure Interp_Demo is
      Sub_Decl (Sign_Name,
        [Cases_Aspect
           ([Case_Of (Bin (Op_Gt, Ref (Dbl_X), Lit (0)),
-                     Bin (Op_Eq, Ref (Result_Def), Lit (1))),
+                     Bin (Op_Eq, Result_Of (Sign_Name), Lit (1))),
             Case_Of (Bin (Op_Eq, Ref (Dbl_X), Lit (0)),
-                     Bin (Op_Eq, Ref (Result_Def), Lit (0))),
+                     Bin (Op_Eq, Result_Of (Sign_Name), Lit (0))),
             Case_Of (Bin (Op_Lt, Ref (Dbl_X), Lit (0)),
-                     Bin (Op_Eq, Ref (Result_Def), Lit (-1)))])]);
+                     Bin (Op_Eq, Result_Of (Sign_Name), Lit (-1)))])]);
 
    --  function Bad_Abs (X) with Contract_Cases =>
    --     (X >= 0 => Result = X, X < 0 => Result + X = 0);  -- body returns X (wrong)
@@ -746,9 +752,9 @@ procedure Interp_Demo is
      Sub_Decl (Bad_Abs_Name,
        [Cases_Aspect
           ([Case_Of (Bin (Op_Ge, Ref (Dbl_X), Lit (0)),
-                     Bin (Op_Eq, Ref (Result_Def), Ref (Dbl_X))),
+                     Bin (Op_Eq, Result_Of (Bad_Abs_Name), Ref (Dbl_X))),
             Case_Of (Bin (Op_Lt, Ref (Dbl_X), Lit (0)),
-                     Bin (Op_Eq, Bin (Op_Plus, Ref (Result_Def), Ref (Dbl_X)),
+                     Bin (Op_Eq, Bin (Op_Plus, Result_Of (Bad_Abs_Name), Ref (Dbl_X)),
                           Lit (0)))])]);
 
    --  function Count_Down (N) with Subprogram_Variant => (Decreases => N)
