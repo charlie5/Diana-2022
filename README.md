@@ -137,7 +137,8 @@ instance (`new T_Inst.Sorted`), where the prefix resolves locally and only the
 selector is the cross-unit reference to the separately-compiled child generic, and
 a **grandchild generic package** (`Graphics.Drivers.Pool`) — three separately-compiled
 units whose doubly-nested-selected-name instantiation resolves as the chain is
-merged top-down.
+merged top-down, and a **subunit** (`Engine.Process`, an `is separate` body) whose
+body stub is completed in place by `Merge_Subunit`.
 
 ## Harness requirements
 

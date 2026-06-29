@@ -59,6 +59,15 @@ package Diana.Library is
                     Parent   : String := "";
                     Nested   : String := "");
 
+   --  Merge a separately-compiled subunit: complete the "is separate" body stub
+   --  in its parent.  Unlike Merge (which resolves name references), this
+   --  re-targets each recorded referrer's Subprogram_Body *Completion* from its
+   --  Stub to the subunit's proper body, loaded beneath the parent.  The parent
+   --  (which carries the stub) must already be compiled, else Missing_Compilation.
+   procedure Merge_Subunit (Lib    : in out Instance;
+                            Name   : String;
+                            Parent : String);
+
    function Is_Pending (Lib : Instance; Name : String) return Boolean;
 
    --  Raise Missing_Compilation (named) if any unit is still a stub.

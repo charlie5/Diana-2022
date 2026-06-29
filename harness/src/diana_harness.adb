@@ -55,6 +55,22 @@ procedure Diana_Harness is
          end;
       end if;
    end Show_Resolution;
+
+   --  Report whether the body at Site (a Subprogram_Body) is still an
+   --  "is separate" stub, or has been completed by its subunit.
+   procedure Show_Body_Status (Site : Cursor; What : String) is
+   begin
+      if Diana.Accessors.Is_Subprogram_Body (Site) then
+         if Diana.Accessors.Is_Stub
+              (Diana.Accessors.As_Subprogram_Body (Site).Completion)
+         then
+            Put_Line ("    body of '" & What
+                      & "' is separate (subunit not yet compiled).");
+         else
+            Put_Line ("    body of '" & What & "' completed by its subunit.");
+         end if;
+      end if;
+   end Show_Body_Status;
 begin
    Put_Line ("DIANA_2022 interpretive harness — separate-compilation demo");
    New_Line;
@@ -461,5 +477,48 @@ begin
       Lib.Require_All_Resolved;
       Put_Line ("    all separate compilations present — grandchild generic "
                 & "loaded three levels deep.");
+   end;
+   New_Line;
+
+   --  10. Separate compilation of a SUBUNIT.  Unlike the unit references above,
+   --      a subunit completes a body STUB: the body of package 'Engine' contains
+   --      "procedure Process is separate;" — a Subprogram_Body whose Completion
+   --      is a Stub.  The subunit 'Engine.Process' is separately compiled; until
+   --      merged the stub is unresolved (and erroring), then the subunit's proper
+   --      body completes it in place.
+   Put_Line ("Separate compilation of a subunit:");
+   declare
+      Engine     : constant Cursor := Lib.Add_Compilation ("Engine");
+      Process_Id : constant Cursor := Lib.Add_Child
+        (Engine, Diana.Builders.Subprogram_Name
+                   (Spelling => SU.To_Unbounded_String ("Process")));
+      Stub_Node  : constant Cursor := Lib.Add_Child (Engine, Diana.Builders.Stub);
+      --  "procedure Process is separate;" in the body of 'Engine'
+      Sep_Body   : constant Cursor := Lib.Add_Child
+        (Engine, Diana.Builders.Subprogram_Body
+                   (Designator => Process_Id, Completion => Stub_Node));
+   begin
+      --  record the body-stub site against the (pending) subunit
+      Lib.Reference (Name => "Engine.Process", Site => Sep_Body, Wanted => "Process");
+      Put_Line ("    built body of 'Engine': procedure Process is separate;");
+      Show_Body_Status (Sep_Body, "Process");
+
+      Put_Line ("    attempting to run with subunit 'Engine.Process' missing ...");
+      begin
+         Lib.Require_All_Resolved;
+         Put_Line ("    (unexpected) library reported fully resolved");
+      exception
+         when E : Diana.Library.Missing_Compilation =>
+            Put_Line ("    errored out as required: "
+                      & Ada.Exceptions.Exception_Message (E));
+      end;
+
+      Put_Line ("    merging separately-compiled subunit 'Engine.Process' ...");
+      Lib.Merge_Subunit (Name => "Engine.Process", Parent => "Engine");
+      Show_Body_Status (Sep_Body, "Process");
+
+      Lib.Require_All_Resolved;
+      Put_Line ("    all separate compilations present — "
+                & "subunit body completed in place.");
    end;
 end Diana_Harness;

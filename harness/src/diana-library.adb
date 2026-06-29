@@ -212,6 +212,68 @@ package body Diana.Library is
       end if;
    end Merge;
 
+   procedure Merge_Subunit (Lib : in out Instance; Name : String; Parent : String)
+   is
+      Stub   : constant Cursor := Find_Unit (Lib, Name);
+      Home   : constant Cursor := Find_Unit (Lib, Parent);
+      Refs   : Referrer_Vectors.Vector;
+      Comp   : Cursor;
+      Proper : Cursor;          --  the subunit's proper body
+      Target : Cursor;
+      Doomed : Cursor;
+
+      --  Complete an "is separate" stub: the parent's Subprogram_Body whose
+      --  Completion was a Stub now points at the subunit's proper body.
+      procedure Complete_Stub (E : in out Node'Class) is
+      begin
+         if E in Diana.Nodes.Subprogram_Body'Class then
+            Diana.Nodes.Subprogram_Body (E).Completion := Target;
+         end if;
+      end Complete_Stub;
+   begin
+      --  the stub being completed lives in the parent's body, so the parent
+      --  (which carries it) must already be a loaded compilation.
+      if Home = No_Element or else Trees.Element (Home) not in Loaded_Unit'Class then
+         raise Missing_Compilation with
+           "subunit '" & Name & "' needs its parent '" & Parent
+           & "' compiled first";
+      end if;
+
+      --  Salvage the recorded body-stub sites before touching the tree.
+      if Stub /= No_Element
+        and then Trees.Element (Stub) in Pending_Unit'Class
+      then
+         Refs := Pending_Unit (Trees.Element (Stub)).Referrers;
+      end if;
+
+      --  Build the loaded subunit beneath its parent: a Subunit node whose
+      --  completion is the proper body (a Subprogram_Body with a Block).
+      Lib.Forest.Append_Child
+        (Home, Loaded_Unit'(Node with Unit_Name => To_Unbounded_String (Name)));
+      Comp := Trees.Last_Child (Home);
+      Lib.Forest.Append_Child (Comp, Diana.Builders.Block);
+      Lib.Forest.Append_Child
+        (Comp, Diana.Builders.Subprogram_Body
+                 (Completion => Trees.Last_Child (Comp)));
+      Proper := Trees.Last_Child (Comp);
+      Lib.Forest.Append_Child
+        (Comp, Diana.Builders.Subunit (Completion => Proper));
+
+      --  Complete every recorded "is separate" stub in place.
+      for R of Refs loop
+         Target := Proper;
+         Lib.Forest.Update_Element (R.Site, Complete_Stub'Access);
+      end loop;
+
+      --  Discard the now-superseded subunit stub.
+      if Stub /= No_Element
+        and then Trees.Element (Stub) in Pending_Unit'Class
+      then
+         Doomed := Stub;
+         Lib.Forest.Delete_Subtree (Doomed);
+      end if;
+   end Merge_Subunit;
+
    function Is_Pending (Lib : Instance; Name : String) return Boolean is
       C : constant Cursor := Find_Unit (Lib, Name);
    begin
