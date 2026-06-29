@@ -928,4 +928,92 @@ begin
                    & "and its subunit body both resolved.");
       end;
    end;
+   New_Line;
+
+   --  16. Separate compilation of a SUBUNIT OF A SUBUNIT OF A GENERIC PACKAGE.
+   --      The generic package 'Logger' (resolved via its instantiation) has a
+   --      subunit 'Logger.Rotate', which in turn has a subunit
+   --      'Logger.Rotate.Archive'.  Each merged subunit is a loaded unit, so the
+   --      same Merge_Subunit completes each level of the chain.
+   Put_Line ("Separate compilation of a subunit of a subunit of a generic package:");
+   declare
+      Client10 : constant Cursor := Lib.Add_Compilation ("Client10");
+      Gen_Ref  : constant Cursor := Lib.Add_Child
+        (Client10, Diana.Builders.Used_Name (Definition => Lib.Require ("Logger")));
+      --  "package Log is new Logger;"
+      Inst     : constant Cursor := Lib.Add_Child
+        (Client10, Diana.Builders.Generic_Instantiation (Generic_Unit => Gen_Ref));
+      function Gen_Site return Cursor is
+        (Diana.Accessors.As_Generic_Instantiation (Inst).Generic_Unit);
+   begin
+      Lib.Reference (Name => "Logger", Site => Gen_Site, Wanted => "Logger");
+      Put_Line ("    built 'Client10': package Log is new Logger;");
+      Show_Resolution (Gen_Site, "Logger");
+
+      Put_Line ("    merging separately-compiled generic package 'Logger' ...");
+      Lib.Merge (Name => "Logger", Declared => "Logger",
+                 Kind => Diana.Library.Generic_Package_Unit);
+      Show_Resolution (Gen_Site, "Logger");
+
+      --  the generic's body has "procedure Rotate is separate;"
+      declare
+         Logger_Body : constant Cursor := Lib.Require ("Logger");  -- loaded generic
+         Rotate_Id   : constant Cursor := Lib.Add_Child
+           (Logger_Body, Diana.Builders.Subprogram_Name
+                           (Spelling => SU.To_Unbounded_String ("Rotate")));
+         Rotate_Stub : constant Cursor := Lib.Add_Child
+           (Logger_Body, Diana.Builders.Stub);
+         Rotate_Body : constant Cursor := Lib.Add_Child
+           (Logger_Body, Diana.Builders.Subprogram_Body
+                           (Designator => Rotate_Id, Completion => Rotate_Stub));
+      begin
+         Lib.Reference (Name => "Logger.Rotate", Site => Rotate_Body,
+                        Wanted => "Rotate");
+         Put_Line ("    'Logger' body has: procedure Rotate is separate;");
+         Show_Body_Status (Rotate_Body, "Rotate");
+         Put_Line ("    merging subunit 'Logger.Rotate' of the generic ...");
+         Lib.Merge_Subunit (Name => "Logger.Rotate", Parent => "Logger");
+         Show_Body_Status (Rotate_Body, "Rotate");
+
+         --  the subunit 'Logger.Rotate' itself has "procedure Archive is separate;"
+         declare
+            Rotate_Unit  : constant Cursor :=
+              Lib.Require ("Logger.Rotate");  -- loaded subunit
+            Archive_Id   : constant Cursor := Lib.Add_Child
+              (Rotate_Unit, Diana.Builders.Subprogram_Name
+                              (Spelling => SU.To_Unbounded_String ("Archive")));
+            Archive_Stub : constant Cursor := Lib.Add_Child
+              (Rotate_Unit, Diana.Builders.Stub);
+            Archive_Body : constant Cursor := Lib.Add_Child
+              (Rotate_Unit, Diana.Builders.Subprogram_Body
+                              (Designator => Archive_Id, Completion => Archive_Stub));
+         begin
+            Lib.Reference (Name => "Logger.Rotate.Archive", Site => Archive_Body,
+                           Wanted => "Archive");
+            Put_Line ("    subunit 'Logger.Rotate' body has: procedure Archive "
+                      & "is separate;");
+            Show_Body_Status (Archive_Body, "Archive");
+
+            Put_Line ("    attempting to run with sub-subunit "
+                      & "'Logger.Rotate.Archive' missing ...");
+            begin
+               Lib.Require_All_Resolved;
+               Put_Line ("    (unexpected) library reported fully resolved");
+            exception
+               when E : Diana.Library.Missing_Compilation =>
+                  Put_Line ("    errored out as required: "
+                            & Ada.Exceptions.Exception_Message (E));
+            end;
+
+            Put_Line ("    merging sub-subunit 'Logger.Rotate.Archive' ...");
+            Lib.Merge_Subunit (Name => "Logger.Rotate.Archive",
+                               Parent => "Logger.Rotate");
+            Show_Body_Status (Archive_Body, "Archive");
+
+            Lib.Require_All_Resolved;
+            Put_Line ("    all separate compilations present — generic package, "
+                      & "its subunit, and its sub-subunit all resolved.");
+         end;
+      end;
+   end;
 end Diana_Harness;
