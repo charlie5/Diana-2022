@@ -710,6 +710,17 @@ procedure Interp_Demo is
                    Filter => Bin (Op_Gt, Ref (E_Def), Lit (4))),
            Print (Ref (Big_Def))]);                                        -- 21
 
+   --  Rec := (X => 1, Y => 2);  Total := 0;
+   --  for E of Rec loop Total := Total + E; end loop;  Put_Line (Total);   -- 3
+   Record_For_Program : constant Cursor :=
+     Seq ([Assign (Rec_Def, Rec ([Field_Assoc (X_Field, Lit (1)),
+                                  Field_Assoc (Y_Field, Lit (2))])),
+           Assign (Total_Def, Lit (0)),
+           For_Of (E_Def, Ref (Rec_Def),
+                   Seq ([Assign (Total_Def,
+                                 Bin (Op_Plus, Ref (Total_Def), Ref (E_Def)))])),
+           Print (Ref (Total_Def))]);                                      -- 3
+
    --  Arr := (10, 20, 30);
    --  Put_Line (Arr'First); Put_Line (Arr'Last); Put_Line (Arr'Length);   -- 1, 3, 3
    --  for I in Arr'First .. Arr'Last loop Put_Line (Arr (I)); end loop;   -- 10, 20, 30
@@ -1085,9 +1096,12 @@ begin
    Put_Line ("    Total := 0; for E of Arr loop Total := Total + E; end loop;");
    Put_Line ("    Big := 0; for E of Arr when E > 4 loop Big := Big + E; end loop;");
    Put_Line ("    Put_Line (Total); Put_Line (Big);");
+   Put_Line ("    Rec := (X => 1, Y => 2); Total := 0;");
+   Put_Line ("    for E of Rec loop Total := Total + E; end loop;  Put_Line (Total);");
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Iterate_Program);
+   Diana.Interpreter.Run (Record_For_Program);
 
    --  Array attributes 'First / 'Last / 'Length, and indexing a for-loop by them.
    New_Line;

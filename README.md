@@ -99,7 +99,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   semantics (indexing, selection, component assignment, and the
   `'First`/`'Last`/`'Length` attributes).
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
-  (with the Ada 2022 `when` filter), `case`, block statements with local
+  (over an array's elements or a record's components, with the Ada 2022 `when`
+  filter), `case`, block statements with local
   declarations, `exit` (incl. named), `goto` + labels, `raise` + exception
   handlers (incl. `when E : ...` occurrence parameters, bare re-raise, and
   `Exception_Name`/`Exception_Message`), `Put_Line`.

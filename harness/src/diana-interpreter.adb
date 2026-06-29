@@ -1,12 +1,18 @@
 with Ada.Text_IO;                           use Ada.Text_IO;
 with Ada.Containers.Indefinite_Hashed_Maps;
 with Ada.Containers.Indefinite_Hashed_Sets;
+with Ada.Containers.Indefinite_Vectors;
 with Ada.Containers.Vectors;
 with Ada.Strings.Fixed;
 with Ada.Strings.Hash;
 with Diana.Accessors;                       use Diana.Accessors;
 
 package body Diana.Interpreter is
+
+   --  Component names in a stable order, so "for ... of" over a record (whose
+   --  store is an unordered map) iterates its components deterministically.
+   package Name_Vectors is new Ada.Containers.Indefinite_Vectors (Positive, String);
+   package Name_Sorting  is new Name_Vectors.Generic_Sorting;
 
    package Real_IO is new Ada.Text_IO.Float_IO (Long_Long_Float);
 
@@ -1523,28 +1529,54 @@ package body Diana.Interpreter is
                            end if;
                         end Iterate;
                      begin
-                        if Iterable.Kind /= Array_Value then
+                        if Iterable.Kind = Array_Value then       --  over elements
+                           declare
+                              --  iterate a snapshot of the elements at loop entry
+                              Elements : constant Value_Vectors.Vector :=
+                                Env.Arrays (Iterable.Elements);
+                           begin
+                              if not Backward then
+                                 for I in 1 .. Natural (Elements.Length) loop
+                                    exit when Pending (Env);
+                                    Iterate (Elements (I));
+                                 end loop;
+                              else
+                                 for I in reverse 1 .. Natural (Elements.Length) loop
+                                    exit when Pending (Env);
+                                    Iterate (Elements (I));
+                                 end loop;
+                              end if;
+                           end;
+
+                        elsif Iterable.Kind = Record_Value then   --  over components
+                           declare
+                              Fields : constant Value_Maps.Map :=
+                                Env.Records (Iterable.Fields);
+                              Names  : Name_Vectors.Vector;
+                           begin
+                              --  component-name order, so iteration is deterministic
+                              for C in Fields.Iterate loop
+                                 Names.Append (Value_Maps.Key (C));
+                              end loop;
+                              Name_Sorting.Sort (Names);
+                              if not Backward then
+                                 for I in 1 .. Natural (Names.Length) loop
+                                    exit when Pending (Env);
+                                    Iterate (Fields.Element (Names (I)));
+                                 end loop;
+                              else
+                                 for I in reverse 1 .. Natural (Names.Length) loop
+                                    exit when Pending (Env);
+                                    Iterate (Fields.Element (Names (I)));
+                                 end loop;
+                              end if;
+                           end;
+
+                        else
                            Leave (Env, Scope);
                            raise Interpretation_Error with
-                             "'for ... of' requires an array value";
+                             "'for ... of' requires an array or record value";
                         end if;
-                        declare
-                           --  iterate a snapshot of the elements at loop entry
-                           Elements : constant Value_Vectors.Vector :=
-                             Env.Arrays (Iterable.Elements);
-                        begin
-                           if not Backward then
-                              for I in 1 .. Natural (Elements.Length) loop
-                                 exit when Pending (Env);
-                                 Iterate (Elements (I));
-                              end loop;
-                           else
-                              for I in reverse 1 .. Natural (Elements.Length) loop
-                                 exit when Pending (Env);
-                                 Iterate (Elements (I));
-                              end loop;
-                           end if;
-                        end;
                         Leave (Env, Scope);
                      end;
 
