@@ -48,6 +48,7 @@ procedure Interp_Demo is
    Op_Minus : constant Cursor := Add (B.Op_Minus);
    Op_Mul   : constant Cursor := Add (B.Op_Multiply);
    Op_Le    : constant Cursor := Add (B.Op_Less_Equal);
+   Op_Cat   : constant Cursor := Add (B.Op_Concatenate);
    Sum_Def  : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sum")));
    N_Def    : constant Cursor :=
@@ -90,11 +91,22 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("T")));
    R_Par   : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("R")));
+   --  real-value demo variables.
+   Pi_Def     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Pi")));
+   Radius_Def : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Radius")));
 
    --  Expression constructors.
    function Lit (V : Integer) return Cursor is
      (Add (B.Numeric_Literal
              (Literal_Image => SU.To_Unbounded_String (Integer'Image (V)))));
+
+   --  Real / string literals (the literal image carries the source spelling).
+   function Real_Lit (Image : String) return Cursor is
+     (Add (B.Numeric_Literal (Literal_Image => SU.To_Unbounded_String (Image))));
+   function Str_Lit (S : String) return Cursor is
+     (Add (B.String_Literal (Literal_Image => SU.To_Unbounded_String (S))));
 
    function Ref (Definition : Cursor) return Cursor is
      (Add (B.Used_Object (Definition => Definition)));
@@ -305,6 +317,17 @@ procedure Interp_Demo is
            Call_Proc (Answer_Def, [Ref (C_Def)]),
            Print (Ref (C_Def))]);
 
+   --  Pi := 3.14; Radius := 2.0; Put_Line (Pi * Radius * Radius);   -- 12.5600
+   --  Put_Line ("Hello, " & "DIANA" & "!");  Put_Line (Radius <= Pi);  -- True
+   Values_Program : constant Cursor :=
+     Seq ([Assign (Pi_Def, Real_Lit ("3.14")),
+           Assign (Radius_Def, Real_Lit ("2.0")),
+           Print (Bin (Op_Mul, Bin (Op_Mul, Ref (Pi_Def), Ref (Radius_Def)),
+                       Ref (Radius_Def))),
+           Print (Bin (Op_Cat, Bin (Op_Cat, Str_Lit ("Hello, "), Str_Lit ("DIANA")),
+                       Str_Lit ("!"))),
+           Print (Bin (Op_Le, Ref (Radius_Def), Ref (Pi_Def)))]);
+
    --  Fill Fact's stub now that its spec and body exist.
    procedure Define_Fact (E : in out Node'Class) is
    begin
@@ -375,6 +398,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Params_Program);
+
+   --  Real and string values: real arithmetic, string concatenation, and a
+   --  real comparison.
+   New_Line;
+   Put_Line ("Executing (real + string values):");
+   Put_Line ("    Pi := 3.14; Radius := 2.0; Put_Line (Pi * Radius * Radius);");
+   Put_Line ("    Put_Line (""Hello, "" & ""DIANA"" & ""!"");");
+   Put_Line ("    Put_Line (Radius <= Pi);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Values_Program);
 
    --  The execute-or-error requirement: running a use of an unbound variable
    --  must fail rather than produce a wrong answer.

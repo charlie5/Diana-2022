@@ -1,10 +1,13 @@
 with Ada.Text_IO;                           use Ada.Text_IO;
 with Ada.Containers.Indefinite_Hashed_Maps;
 with Ada.Containers.Vectors;
+with Ada.Strings.Fixed;
 with Ada.Strings.Hash;
 with Diana.Accessors;                       use Diana.Accessors;
 
 package body Diana.Interpreter is
+
+   package Real_IO is new Ada.Text_IO.Float_IO (Long_Long_Float);
 
    use type Trees.Cursor;
 
@@ -95,6 +98,10 @@ package body Diana.Interpreter is
      is ((Kind => Integer_Value, Whole => V));
    function Bool (V : Boolean) return Static_Value
      is ((Kind => Boolean_Value, Flag => V));
+   function Real_V (V : Long_Long_Float) return Static_Value
+     is ((Kind => Real_Value, Number => V));
+   function Str (V : Symbol_Rep) return Static_Value
+     is ((Kind => String_Value, Text => V));
 
    function Whole_Of (V : Static_Value) return Long_Long_Integer is
    begin
@@ -112,6 +119,26 @@ package body Diana.Interpreter is
       return V.Flag;
    end Bool_Of;
 
+   --  Numeric values (Integer or Real); a real view promotes an integer.
+   function Is_Number (V : Static_Value) return Boolean
+     is (V.Kind = Integer_Value or else V.Kind = Real_Value);
+   function Real_Of (V : Static_Value) return Long_Long_Float is
+   begin
+      case V.Kind is
+         when Integer_Value => return Long_Long_Float (V.Whole);
+         when Real_Value    => return V.Number;
+         when others        =>
+            raise Interpretation_Error with "expected a numeric value";
+      end case;
+   end Real_Of;
+   function Str_Of (V : Static_Value) return Symbol_Rep is
+   begin
+      if V.Kind /= String_Value then
+         raise Interpretation_Error with "expected a string value";
+      end if;
+      return V.Text;
+   end Str_Of;
+
    function Image (V : Static_Value) return String is
    begin
       case V.Kind is
@@ -123,7 +150,13 @@ package body Diana.Interpreter is
             end;
          when Boolean_Value => return (if V.Flag then "True" else "False");
          when String_Value  => return SU.To_String (V.Text);
-         when Real_Value    => return Long_Long_Float'Image (V.Number);
+         when Real_Value    =>
+            declare
+               Buffer : String (1 .. 64);
+            begin
+               Real_IO.Put (Buffer, V.Number, Aft => 4, Exp => 0);
+               return Ada.Strings.Fixed.Trim (Buffer, Ada.Strings.Both);
+            end;
          when No_Value      => return "<no value>";
       end case;
    end Image;
@@ -206,34 +239,102 @@ package body Diana.Interpreter is
          end if;
          return Evaluate (As_Positional_Association (Args (I)).Value, Env, Current);
       end Operand;
+
+      --  +, -, *, / : integer if both operands are integers, else real.
+      function Arithmetic (L, R : Static_Value) return Static_Value is
+      begin
+         if L.Kind = Integer_Value and then R.Kind = Integer_Value then
+            if    Is_Op_Plus (Op)     then return Int (L.Whole + R.Whole);
+            elsif Is_Op_Minus (Op)    then return Int (L.Whole - R.Whole);
+            elsif Is_Op_Multiply (Op) then return Int (L.Whole * R.Whole);
+            else                           return Int (L.Whole / R.Whole);  -- /
+            end if;
+         elsif Is_Number (L) and then Is_Number (R) then
+            declare
+               X : constant Long_Long_Float := Real_Of (L);
+               Y : constant Long_Long_Float := Real_Of (R);
+            begin
+               if    Is_Op_Plus (Op)     then return Real_V (X + Y);
+               elsif Is_Op_Minus (Op)    then return Real_V (X - Y);
+               elsif Is_Op_Multiply (Op) then return Real_V (X * Y);
+               else                           return Real_V (X / Y);
+               end if;
+            end;
+         else
+            raise Interpretation_Error with "arithmetic on non-numeric values";
+         end if;
+      end Arithmetic;
+
+      --  Equality / ordering over integers, reals, strings (and booleans for =).
+      function Equal (A, B : Static_Value) return Boolean is
+      begin
+         if Is_Number (A) and then Is_Number (B) then
+            return Real_Of (A) = Real_Of (B);
+         elsif A.Kind = Boolean_Value and then B.Kind = Boolean_Value then
+            return A.Flag = B.Flag;
+         elsif A.Kind = String_Value and then B.Kind = String_Value then
+            return SU."=" (A.Text, B.Text);
+         else
+            raise Interpretation_Error with "incompatible operands in comparison";
+         end if;
+      end Equal;
+
+      function Less (A, B : Static_Value) return Boolean is
+      begin
+         if Is_Number (A) and then Is_Number (B) then
+            return Real_Of (A) < Real_Of (B);
+         elsif A.Kind = String_Value and then B.Kind = String_Value then
+            return SU."<" (A.Text, B.Text);
+         else
+            raise Interpretation_Error with "incompatible operands in comparison";
+         end if;
+      end Less;
    begin
-      if    Is_Op_Unary_Minus (Op) then return Int (-Whole_Of (Operand (1)));
-      elsif Is_Op_Unary_Plus  (Op) then return Operand (1);
-      elsif Is_Op_Absolute    (Op) then return Int (abs Whole_Of (Operand (1)));
-      elsif Is_Op_Not         (Op) then return Bool (not Bool_Of (Operand (1)));
+      if Is_Op_Unary_Minus (Op) then
+         declare
+            V : constant Static_Value := Operand (1);
+         begin
+            if V.Kind = Integer_Value then return Int (-V.Whole);
+            else return Real_V (-Real_Of (V)); end if;
+         end;
+      elsif Is_Op_Unary_Plus (Op) then return Operand (1);
+      elsif Is_Op_Absolute (Op) then
+         declare
+            V : constant Static_Value := Operand (1);
+         begin
+            if V.Kind = Integer_Value then return Int (abs V.Whole);
+            else return Real_V (abs Real_Of (V)); end if;
+         end;
+      elsif Is_Op_Not (Op) then return Bool (not Bool_Of (Operand (1)));
       end if;
 
       declare
          L : constant Static_Value := Operand (1);
          R : constant Static_Value := Operand (2);
       begin
-         if    Is_Op_Plus (Op)         then return Int (Whole_Of (L) + Whole_Of (R));
-         elsif Is_Op_Minus (Op)        then return Int (Whole_Of (L) - Whole_Of (R));
-         elsif Is_Op_Multiply (Op)     then return Int (Whole_Of (L) * Whole_Of (R));
-         elsif Is_Op_Divide (Op)       then return Int (Whole_Of (L) / Whole_Of (R));
+         if    Is_Op_Plus (Op) or else Is_Op_Minus (Op)
+            or else Is_Op_Multiply (Op) or else Is_Op_Divide (Op)
+         then
+            return Arithmetic (L, R);
          elsif Is_Op_Modulo (Op)       then return Int (Whole_Of (L) mod Whole_Of (R));
          elsif Is_Op_Remainder (Op)    then return Int (Whole_Of (L) rem Whole_Of (R));
          elsif Is_Op_Exponentiate (Op) then
-            return Int (Whole_Of (L) ** Natural (Whole_Of (R)));
+            if L.Kind = Integer_Value then
+               return Int (L.Whole ** Natural (Whole_Of (R)));
+            else
+               return Real_V (Real_Of (L) ** Natural (Whole_Of (R)));
+            end if;
+         elsif Is_Op_Concatenate (Op) then
+            return Str (SU."&" (Str_Of (L), Str_Of (R)));
          elsif Is_Op_And (Op) then return Bool (Bool_Of (L) and Bool_Of (R));
          elsif Is_Op_Or (Op)  then return Bool (Bool_Of (L) or Bool_Of (R));
          elsif Is_Op_Xor (Op) then return Bool (Bool_Of (L) xor Bool_Of (R));
-         elsif Is_Op_Equal (Op)         then return Bool (Whole_Of (L) =  Whole_Of (R));
-         elsif Is_Op_Not_Equal (Op)     then return Bool (Whole_Of (L) /= Whole_Of (R));
-         elsif Is_Op_Less (Op)          then return Bool (Whole_Of (L) <  Whole_Of (R));
-         elsif Is_Op_Less_Equal (Op)    then return Bool (Whole_Of (L) <= Whole_Of (R));
-         elsif Is_Op_Greater (Op)       then return Bool (Whole_Of (L) >  Whole_Of (R));
-         elsif Is_Op_Greater_Equal (Op) then return Bool (Whole_Of (L) >= Whole_Of (R));
+         elsif Is_Op_Equal (Op)         then return Bool (Equal (L, R));
+         elsif Is_Op_Not_Equal (Op)     then return Bool (not Equal (L, R));
+         elsif Is_Op_Less (Op)          then return Bool (Less (L, R));
+         elsif Is_Op_Less_Equal (Op)    then return Bool (not Less (R, L));
+         elsif Is_Op_Greater (Op)       then return Bool (Less (R, L));
+         elsif Is_Op_Greater_Equal (Op) then return Bool (not Less (L, R));
          else
             raise Interpretation_Error with "unsupported operator";
          end if;
@@ -342,8 +443,17 @@ package body Diana.Interpreter is
      return Static_Value is
    begin
       if Is_Numeric_Literal (Expr) then
-         return Int (Long_Long_Integer'Value
-                       (SU.To_String (As_Numeric_Literal (Expr).Literal_Image)));
+         declare
+            Image : constant String :=
+              SU.To_String (As_Numeric_Literal (Expr).Literal_Image);
+         begin
+            --  a decimal point marks a real literal (Ada requires the point)
+            if (for some C of Image => C = '.') then
+               return Real_V (Long_Long_Float'Value (Image));
+            else
+               return Int (Long_Long_Integer'Value (Image));
+            end if;
+         end;
 
       elsif Is_String_Literal (Expr) then
          return (Kind => String_Value,
