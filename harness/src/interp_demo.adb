@@ -730,6 +730,10 @@ procedure Interp_Demo is
              (Iteration  => Add (B.No_Iteration),
               Statements => Body_Seq)));
 
+   --  "delay Seconds;" -- a relative delay (a no-op in the sequential model).
+   function Delay_For (Seconds : Cursor) return Cursor is
+     (Add (B.Delay_Statement (Expression => Seconds, Until_Form => False)));
+
    --  Case choices and alternatives.
    function Val_Choice (V : Integer) return Cursor is
      (Add (B.Choice_Expression (Value => Lit (V))));
@@ -2897,6 +2901,13 @@ procedure Interp_Demo is
                              Exit_When (Bin (Op_Ge, Ref (N_Def), Lit (3)))])),
            Print (Ref (N_Def))]);                                          -- 3
 
+   --  A 'delay' statement: no real-time model, so it does not wait -- execution
+   --  simply continues.  Put_Line (1); delay 0.5; Put_Line (2);           -- 1, 2
+   Delay_Program : constant Cursor :=
+     Seq ([Print (Lit (1)),
+           Delay_For (Real_Lit ("0.5")),
+           Print (Lit (2))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3817,6 +3828,14 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Plain_Loop_Program);   -- 3
+
+   --  A 'delay' statement: sequential model has no time, so it does not wait.
+   New_Line;
+   Put_Line ("Executing (delay statement -- a no-op here):");
+   Put_Line ("    Put_Line (1); delay 0.5; Put_Line (2);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Delay_Program);   -- 1, 2
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

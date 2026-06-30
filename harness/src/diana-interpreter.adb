@@ -2202,6 +2202,17 @@ package body Diana.Interpreter is
       if Is_Null_Statement (Stmt) then
          null;
 
+      elsif Is_Delay_Statement (Stmt) then
+         --  the interpreter has no real-time model, so a delay does not wait;
+         --  its expression is still evaluated (to surface any error in it).
+         declare
+            Ignored : constant Static_Value :=
+              Evaluate (As_Delay_Statement (Stmt).Expression, Env, Current);
+            pragma Unreferenced (Ignored);
+         begin
+            null;
+         end;
+
       elsif Is_Statement_S (Stmt) then
          --  an index loop so a goto can jump to a labelled item in THIS sequence
          declare
