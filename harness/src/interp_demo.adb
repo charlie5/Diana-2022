@@ -158,6 +158,8 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Val")));
    Old_Attr    : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
+   Access_Attr : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Access")));
    My_Error    : constant Cursor :=
      Add (B.Exception_Name (Spelling => SU.To_Unbounded_String ("My_Error")));
    ExcMsg_Name : constant Cursor :=
@@ -396,6 +398,21 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
    Cash_Type   : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Cash")));
+   --  access-to-subprogram-generic-formal-type demo: the formal access-to-
+   --  function type "Op_Ref", Apply_Twice's two parameters, an actual function
+   --  "Double" + its parameter, and the actual access type "Fn".
+   Op_Ref_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Op_Ref")));
+   AT_F        : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("F")));
+   AT_X        : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Double_Def  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Double")));
+   Double_N    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
+   Fn_Type     : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Fn")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -661,6 +678,16 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Decimal_Fixed))));
+   --  a "type Name is access function ...;" generic formal access-to-subprogram.
+   function Generic_Access_Sub_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Access_To_Subprogram))));
+   --  "Sub'Access" -- a first-class reference to subprogram Sub.
+   function Access_Of (Sub_Def : Cursor) return Cursor is
+     (Add (B.Attribute_Reference
+             (Prefix    => Add (B.Used_Name (Definition => Sub_Def)),
+              Attribute => Add (B.Used_Name (Definition => Access_Attr)))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1951,6 +1978,33 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Scale_M,  [Real_Lit ("1.5")])),
            Print (Sub_Call (Add_Cash, [Real_Lit ("1.25"), Real_Lit ("2.5")]))]);
 
+   --  generic
+   --     type Op_Ref is access function (X : Integer) return Integer;
+   --  function Apply_Twice (F : Op_Ref; X : Integer) return Integer is
+   --  begin return F (F (X)); end;     -- calls through the subprogram reference F
+   Apply_Twice : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Apply_Twice"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Access_Sub_Formal (Op_Ref_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (AT_F), In_Par (AT_X)]))),
+             Completion    => Blk ([], [Ret (Sub_Call (AT_F,
+               [Sub_Call (AT_F, [Ref (AT_X)])]))])));
+
+   --  function Double (N : Integer) return Integer is begin return N * 2; end;
+   --  type Fn is access function (X : Integer) return Integer;
+   --  function Twice_Double is new Apply_Twice (Fn);
+   Twice_Double : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Twice_Double"),
+             Completion => Instance_Of (Apply_Twice,
+               [Add (B.Used_Name (Definition => Fn_Type))])));
+
+   --  Put_Line (Twice_Double (Double'Access, 5));   -- Double (Double (5)) = 20
+   Access_Sub_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Twice_Double, [Access_Of (Double_Def), Lit (5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2515,6 +2569,24 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Fixed_Formal_Program);
+
+   --  Formal access-to-subprogram types: a formal access-to-function type; the
+   --  body calls through a parameter of that type (a subprogram reference),
+   --  passed Double'Access at the call.
+   New_Line;
+   Put_Line ("Executing (formal access-to-subprogram types):");
+   Put_Line ("    generic type Op_Ref is access function (X : Integer) return Integer;");
+   Put_Line ("    function Apply_Twice (F : Op_Ref; X : Integer) return Integer");
+   Put_Line ("       is begin return F (F (X)); end;");
+   Put_Line ("    type Fn is access function (X : Integer) return Integer;");
+   Put_Line ("    function Twice_Double is new Apply_Twice (Fn);");
+   Put_Line ("    Put_Line (Twice_Double (Double'Access, 5));   -- Double (Double (5)) = 20");
+   New_Line;
+   Put_Line ("Output:");
+   --  the concrete subprogram referenced via 'Access
+   Complete (Double_Def, Func_Spec ([In_Par (Double_N)]),
+             Blk ([], [Ret (Bin (Op_Mul, Ref (Double_N), Lit (2)))]));
+   Diana.Interpreter.Run (Access_Sub_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

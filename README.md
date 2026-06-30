@@ -122,7 +122,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   and using `'Pos`; `digits <>`, floating-point, with real arithmetic; `delta <>`
   ordinary and `delta <> digits <>` decimal fixed-point), formal
   **access** types (the body
-  dereferences with `.all`), and formal
+  dereferences with `.all`, including access-to-subprogram references called
+  through via `Subprogram'Access`), and formal
   **array** types (the body indexes and uses `'First`/`'Last`) — and
   formal **packages** bound to an actual instance, so `P.Member` resolves through
   it; with **defaults** for omitted object/subprogram formals and **`in out`**

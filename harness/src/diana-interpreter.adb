@@ -62,6 +62,11 @@ package body Diana.Interpreter is
    package Record_Store is new Ada.Containers.Vectors
      (Positive, Value_Maps.Map, Value_Maps."=");
 
+   --  Subprogram-reference store: a Subprogram_Value (from "X'Access") is a
+   --  handle into this vector of the referenced subprograms' defining occurrences.
+   package Subprogram_Store is new Ada.Containers.Vectors
+     (Positive, Cursor, Trees."=");
+
    --  A subprogram's runtime contract: Pre / Post conditions, the guard and
    --  consequence of each Contract_Cases alternative (parallel lists; a void
    --  guard is "others"), and a Subprogram_Variant expression (decreases).
@@ -115,6 +120,7 @@ package body Diana.Interpreter is
       Heap         : Value_Vectors.Vector;           --  allocated objects (1-based)
       Arrays       : Array_Store.Vector;             --  array values (1-based)
       Records      : Record_Store.Vector;            --  record values (1-based)
+      Sub_Refs     : Subprogram_Store.Vector;        --  subprogram references (1-based)
       Contracts    : Contract_Maps.Map;              --  Pre/Post/Cases/Variant by name
       Variants     : Variant_Maps.Map;               --  active variant values per name
       Old_Values   : Value_Maps.Map;                 --  'Old snapshots during a Post check
@@ -210,6 +216,22 @@ package body Diana.Interpreter is
       end loop;
       raise Interpretation_Error with "unbound variable: " & Name;
    end Lookup;
+
+   --  Like Lookup but yields a No_Value rather than raising when Name is unbound
+   --  (used to detect a name bound to a Subprogram_Value, i.e. callable through).
+   function Bound_Value (Env : Environment; Current : Positive; Name : String)
+     return Static_Value
+   is
+      I : Natural := Current;
+   begin
+      while I /= 0 loop
+         if Env.Scopes (I).Bindings.Contains (Name) then
+            return Env.Scopes (I).Bindings.Element (Name);
+         end if;
+         I := Env.Scopes (I).Parent;
+      end loop;
+      return (Kind => No_Value);
+   end Bound_Value;
 
    --  Assign a name: update it in the innermost scope that declares it; if no
    --  scope declares it, introduce it in the global scope (an implicit global).
@@ -340,6 +362,7 @@ package body Diana.Interpreter is
          when Record_Value  => return "(record)";
          when Enum_Value    => return SU.To_String (V.Lit_Name);   --  by name
          when Package_Value => return "(package)";
+         when Subprogram_Value => return "(subprogram)";
          when No_Value      => return "<no value>";
       end case;
    end Image;
@@ -1392,6 +1415,13 @@ package body Diana.Interpreter is
                   end if;
                   return Env.Old_Values.Element (Name);
                end;
+
+            elsif Attribute = "Access" then
+               --  Subprogram'Access: a first-class reference to the subprogram,
+               --  stored by handle and callable through (see Function_Call).
+               Env.Sub_Refs.Append
+                 (Definition_Of (As_Attribute_Reference (Expr).Prefix));
+               return (Kind => Subprogram_Value, Reference => Env.Sub_Refs.Last_Index);
             else
                raise Interpretation_Error with "unsupported attribute: " & Attribute;
             end if;
@@ -1464,6 +1494,10 @@ package body Diana.Interpreter is
                --  a call to a generic formal subprogram dispatches to its actual
                Actual_Sub : constant Cursor :=
                  Lookup_Formal_Sub (Env, Current, Spelling_Of (Def));
+               --  a name bound to a Subprogram_Value is called through (a
+               --  reference of a formal access-to-subprogram type)
+               Bound : constant Static_Value :=
+                 Bound_Value (Env, Current, Spelling_Of (Def));
             begin
                if Spelling_Of (Def) = "Exception_Message" then
                   --  the message of the exception currently being handled
@@ -1473,6 +1507,8 @@ package body Diana.Interpreter is
                   return (Kind => String_Value, Text => Env.Handling);
                elsif Actual_Sub /= No_Element then
                   return Invoke (Actual_Sub, Args, Env, Current);
+               elsif Bound.Kind = Subprogram_Value then
+                  return Invoke (Env.Sub_Refs (Bound.Reference), Args, Env, Current);
                elsif Is_Subprogram_Name (Def) then
                   return Invoke (Def, Args, Env, Current);
                else

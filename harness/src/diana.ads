@@ -48,9 +48,12 @@ package Diana is
    --  it prints by name).  Package_Value is a runtime-only handle into the
    --  interpreter's scope store: the index of the scope holding a (generic)
    --  package instance's declarations, so "Pkg.Member" resolves through it.
+   --  Subprogram_Value is a first-class subprogram reference (from "X'Access"):
+   --  a handle into the interpreter's subprogram-reference store, called through.
    type Value_Kind is (No_Value, String_Value, Boolean_Value,
                        Integer_Value, Real_Value, Access_Value,
-                       Array_Value, Record_Value, Enum_Value, Package_Value);
+                       Array_Value, Record_Value, Enum_Value, Package_Value,
+                       Subprogram_Value);
    type Static_Value (Kind : Value_Kind := No_Value) is record
       case Kind is
          when No_Value      => null;
@@ -64,6 +67,7 @@ package Diana is
          when Enum_Value    => Pos      : Long_Long_Integer;
                                Lit_Name : Symbol_Rep;
          when Package_Value => Instance : Natural;
+         when Subprogram_Value => Reference : Natural;
       end case;
    end record;
 
