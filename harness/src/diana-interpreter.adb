@@ -1760,6 +1760,33 @@ package body Diana.Interpreter is
             return Bool (For_All);   --  all held / no witness for some
          end;
 
+      elsif Is_Type_Conversion (Expr) then         --  Target (Operand)
+         declare
+            Target : constant String :=
+              Spelling_Of (Definition_Of (As_Type_Conversion (Expr).Target));
+            V : constant Static_Value :=
+              Evaluate (As_Type_Conversion (Expr).Operand, Env, Current);
+         begin
+            --  numeric conversions change representation (the interpreter is
+            --  otherwise dynamically typed): to an integer type rounds a real to
+            --  the nearest integer; to a float type widens an integer to real.
+            if Target = "Integer" or else Target = "Natural"
+              or else Target = "Positive"
+            then
+               return Int (Long_Long_Integer (Real_Of (V)));
+            elsif Target = "Float" or else Target = "Long_Float"
+              or else Target = "Real"
+            then
+               return Real_V (Real_Of (V));
+            else
+               return V;   --  same-category / unmodelled conversion: identity
+            end if;
+         end;
+
+      elsif Is_Qualified_Expression (Expr) then     --  Target'(Operand)
+         --  qualification asserts a type; at runtime it is just the value.
+         return Evaluate (As_Qualified_Expression (Expr).Operand, Env, Current);
+
       else
          raise Interpretation_Error with "cannot evaluate this expression node";
       end if;

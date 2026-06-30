@@ -105,7 +105,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   its position *and* name, so it compares/iterates as an integer but prints by
   name), **conditional expressions** (`if`- and `case`-expressions),
   **membership tests** (`X in 1 | 3 | 5`, `X in 10 .. 20`, `X not in ...`),
-  **quantified expressions** (`for all` / `for some` over a range), block
+  **quantified expressions** (`for all` / `for some` over a range), **type
+  conversions** (`Integer (R)` / `Float (I)`) and **qualified expressions**
+  (`T'(X)`), block
   statements with local
   declarations, `exit` (incl. named), `goto` + labels, `raise` + exception
   handlers (incl. `when E : ...` occurrence parameters, bare re-raise, and

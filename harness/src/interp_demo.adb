@@ -263,6 +263,8 @@ procedure Interp_Demo is
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Integer")));
    String_Type  : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("String")));
+   Float_Type   : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Float")));
    --  generic-formal-package demo: a formal package "S" (any Scaler instance)
    --  and Scale_Twice_Gen's parameter "X".
    S_Formal : constant Cursor :=
@@ -940,6 +942,16 @@ procedure Interp_Demo is
              (Prefix         => Array_Ref,
               Discrete_Range => Add (B.Range_Bounds (Lower => Lit (Lo),
                                                      Upper => Lit (Hi))))));
+
+   --  a type conversion "Type (Operand)" and a qualified expression "Type'(Operand)".
+   function Convert (Type_Def, Operand : Cursor) return Cursor is
+     (Add (B.Type_Conversion
+             (Target  => Add (B.Used_Name (Definition => Type_Def)),
+              Operand => Operand)));
+   function Qualify (Type_Def, Operand : Cursor) return Cursor is
+     (Add (B.Qualified_Expression
+             (Target  => Add (B.Used_Name (Definition => Type_Def)),
+              Operand => Operand)));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2622,6 +2634,16 @@ procedure Interp_Demo is
                        Attr_Call (Integer_Type, Image_Attr, Lit (7)))),
            Print (Attr_Call (Color_Type, Image_Attr, Ref (Blue_Lit)))]);
 
+   --  Put_Line (Float (3));         -- 3.0000  (integer widened to real)
+   --  Put_Line (Integer (3.7));     -- 4       (real rounded to nearest)
+   --  Put_Line (Integer (3.2));     -- 3
+   --  Put_Line (Integer'(5));       -- 5       (qualification = identity)
+   Conversion_Program : constant Cursor :=
+     Seq ([Print (Convert (Float_Type, Lit (3))),
+           Print (Convert (Integer_Type, Real_Lit ("3.7"))),
+           Print (Convert (Integer_Type, Real_Lit ("3.2"))),
+           Print (Qualify (Integer_Type, Lit (5)))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3407,6 +3429,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Image_Program);   -- 42, answer = 7, Blue
+
+   --  Type conversions and qualified expressions: numeric conversions change
+   --  representation (Integer rounds a real, Float widens an integer);
+   --  qualification asserts a type and is the value at runtime.
+   New_Line;
+   Put_Line ("Executing (type conversion + qualified expression):");
+   Put_Line ("    Put_Line (Float (3)); Put_Line (Integer (3.7)); Put_Line (Integer (3.2));");
+   Put_Line ("    Put_Line (Integer'(5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Conversion_Program);   -- 3.0000, 4, 3, 5
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
