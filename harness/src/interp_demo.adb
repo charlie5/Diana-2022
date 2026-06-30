@@ -523,6 +523,9 @@ procedure Interp_Demo is
      Add (B.Entry_Name (Spelling => SU.To_Unbounded_String ("Report")));
    Sw_State     : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("State")));
+   --  quantified-expression demo: the quantifier variable "I".
+   Q_I          : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("I")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -910,6 +913,21 @@ procedure Interp_Demo is
                          Operator => Add (B.Not_In_Set),
                          Choices  => Add (B.Membership_Choice_S
                            (List => NL (Choices))))));
+
+   --  quantified expressions: "(for all P in Lo .. Hi => Pred)" / "(for some ...)".
+   function Quantified (Quantifier, Param_Def : Cursor; Lo, Hi : Integer;
+                        Pred : Cursor) return Cursor is
+     (Add (B.Quantified_Expression
+             (Quantifier => Quantifier,
+              Iterator   => Add (B.Range_Iterator
+                (Parameter      => Param_Def,
+                 Discrete_Range => Add (B.Range_Bounds (Lower => Lit (Lo),
+                                                        Upper => Lit (Hi))))),
+              Predicate  => Pred)));
+   function For_All_Expr (Param_Def : Cursor; Lo, Hi : Integer; Pred : Cursor)
+     return Cursor is (Quantified (Add (B.For_All), Param_Def, Lo, Hi, Pred));
+   function For_Some_Expr (Param_Def : Cursor; Lo, Hi : Integer; Pred : Cursor)
+     return Cursor is (Quantified (Add (B.For_Some), Param_Def, Lo, Hi, Pred));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2561,6 +2579,16 @@ procedure Interp_Demo is
            Print (In_Test (Lit (15), [Mem_Range (10, 20)])),
            Print (Not_In_Test (Lit (7), [Mem_Range (1, 5)]))]);
 
+   --  Put_Line ((for all I in 1 .. 5 => I > 0));   -- True
+   --  Put_Line ((for all I in 1 .. 5 => I > 3));   -- False
+   --  Put_Line ((for some I in 1 .. 5 => I = 4));  -- True
+   --  Put_Line ((for some I in 1 .. 5 => I = 9));  -- False
+   Quantified_Program : constant Cursor :=
+     Seq ([Print (For_All_Expr  (Q_I, 1, 5, Bin (Op_Gt, Ref (Q_I), Lit (0)))),
+           Print (For_All_Expr  (Q_I, 1, 5, Bin (Op_Gt, Ref (Q_I), Lit (3)))),
+           Print (For_Some_Expr (Q_I, 1, 5, Bin (Op_Eq, Ref (Q_I), Lit (4)))),
+           Print (For_Some_Expr (Q_I, 1, 5, Bin (Op_Eq, Ref (Q_I), Lit (9))))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3316,6 +3344,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Membership_Program);   -- True, False, True, True
+
+   --  Quantified expressions: "for all" holds iff the predicate holds for every
+   --  value of the range; "for some" holds iff it holds for at least one.
+   New_Line;
+   Put_Line ("Executing (quantified expressions):");
+   Put_Line ("    Put_Line ((for all I in 1 .. 5 => I > 0));  Put_Line ((for all I in 1 .. 5 => I > 3));");
+   Put_Line ("    Put_Line ((for some I in 1 .. 5 => I = 4)); Put_Line ((for some I in 1 .. 5 => I = 9));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Quantified_Program);   -- True, False, True, False
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

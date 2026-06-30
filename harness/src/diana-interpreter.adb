@@ -1692,6 +1692,41 @@ package body Diana.Interpreter is
             return Bool (In_Set);
          end;
 
+      elsif Is_Quantified_Expression (Expr) then   --  (for all/some I in L .. H => P)
+         declare
+            Iter    : constant Cursor := As_Quantified_Expression (Expr).Iterator;
+            Pred    : constant Cursor := As_Quantified_Expression (Expr).Predicate;
+            For_All : constant Boolean :=
+              Is_For_All (As_Quantified_Expression (Expr).Quantifier);
+            Low, High : Long_Long_Integer;
+         begin
+            if not Is_Range_Iterator (Iter) then
+               raise Interpretation_Error with
+                 "only range iterators are supported in a quantified expression";
+            end if;
+            Eval_Range (As_Range_Iterator (Iter).Discrete_Range, Env, Current,
+                        Low, High);
+            for I in Low .. High loop
+               declare
+                  Scope : constant Positive := Enter (Env, Current);
+                  Holds : Boolean;
+               begin
+                  Define (Env, Scope,
+                          Spelling_Of (As_Range_Iterator (Iter).Parameter), Int (I));
+                  Holds := Bool_Of (Evaluate (Pred, Env, Scope));
+                  Leave (Env, Scope);
+                  --  "for all" fails on the first counter-example; "for some"
+                  --  succeeds on the first witness.
+                  if For_All and then not Holds then
+                     return Bool (False);
+                  elsif not For_All and then Holds then
+                     return Bool (True);
+                  end if;
+               end;
+            end loop;
+            return Bool (For_All);   --  all held / no witness for some
+         end;
+
       else
          raise Interpretation_Error with "cannot evaluate this expression node";
       end if;
