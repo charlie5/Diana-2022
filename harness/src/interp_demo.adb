@@ -583,6 +583,14 @@ procedure Interp_Demo is
    --  string indexing / slicing / attributes demo variable.
    Str_Var      : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("S")));
+
+   --  declare-expression locals.
+   DE_Local     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Local")));
+   DE_X         : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("DX")));
+   DE_Y         : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("DY")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -692,6 +700,12 @@ procedure Interp_Demo is
              (Block => Add (B.Block
                (Declarations => Add (B.Item_S (List => NL (Decls))),
                 Statements   => Add (B.Statement_S (List => NL (Stmts))))))));
+
+   --  Ada 2022 declare expression "(declare <Decls> begin <Result>)".
+   function Declare_Expr (Decls : Cursor_Array; Result : Cursor) return Cursor is
+     (Add (B.Declare_Expression
+             (Declarations => Add (B.Declaration_S (List => NL (Decls))),
+              Result       => Result)));
 
    --  "for Param_Def in Low .. High loop Body_Seq end loop".
    function For_In (Param_Def : Cursor; Low, High : Integer;
@@ -2994,6 +3008,17 @@ procedure Interp_Demo is
            Print (Attr_Call (Char_Type, Succ_Attr, Char_Lit ('A'))),   -- B
            Print (Attr_Call (Char_Type, Pred_Attr, Char_Lit ('B')))]); -- A
 
+   --  Ada 2022 declare expressions: locals elaborated into a fresh scope, the
+   --  result computed over them, the scope discarded afterwards.
+   --  (declare Local := 21; begin Local + Local)   -- 42
+   --  (declare DX := 5; DY := 10; begin DX * DY)    -- 50
+   Declare_Expr_Program : constant Cursor :=
+     Seq ([Print (Declare_Expr ([Var_Decl (DE_Local, Lit (21))],
+                    Bin (Op_Plus, Ref (DE_Local), Ref (DE_Local)))),     -- 42
+           Print (Declare_Expr ([Var_Decl (DE_X, Lit (5)),
+                                 Var_Decl (DE_Y, Lit (10))],
+                    Bin (Op_Mul, Ref (DE_X), Ref (DE_Y))))]);            -- 50
+
    --  Composite equality: arrays and records compare element-/component-wise.
    --  (1,2,3) = (1,2,3) -> True;  (1,2,3) = (1,9,3) -> False;
    --  (1,2) /= (1,2,3) -> True (lengths differ);  records likewise.
@@ -3995,6 +4020,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Char_Attr_Program);   -- 65, B, B, A
+
+   --  Ada 2022 declare expressions: "(declare <decls> begin <result>)".
+   New_Line;
+   Put_Line ("Executing (declare expressions):");
+   Put_Line ("    Put_Line ((declare Local := 21; begin Local + Local));");
+   Put_Line ("    Put_Line ((declare DX := 5; DY := 10; begin DX * DY));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Declare_Expr_Program);   -- 42, 50
 
    --  Composite equality: arrays and records compared element-/component-wise.
    New_Line;

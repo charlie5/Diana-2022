@@ -126,8 +126,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   when the Left does not settle the result), **type
   conversions** (`Integer (R)` / `Float (I)`) and **qualified expressions**
   (`T'(X)`), block
-  statements with local
-  declarations, `exit` (incl. named), `goto` + labels, `delay` (a no-op in the
+  statements and **declare expressions** (`(declare X := 5; begin X * X)`) with
+  local declarations, `exit` (incl. named), `goto` + labels, `delay` (a no-op in the
   sequential model), `raise` + exception
   handlers (incl. `when E : ...` occurrence parameters, bare re-raise, and
   `Exception_Name`/`Exception_Message`), `Put_Line`.
