@@ -476,6 +476,18 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
    TG_S        : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
+   --  tasking / protected demo: a protected object "Counter" (private state
+   --  "Count" + a procedure "Bump" and a function "Value"), and a task "Worker".
+   PO_Counter  : constant Cursor :=
+     Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("Counter")));
+   Count_PO    : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Count")));
+   Bump_Def    : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Bump")));
+   Value_Def   : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Value")));
+   Worker_Def  : constant Cursor :=
+     Add (B.Task_Body_Name (Spelling => SU.To_Unbounded_String ("Worker")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -785,6 +797,29 @@ procedure Interp_Demo is
              (Name       => Name_Def,
               Definition => Add (B.Formal_Private_Type
                 (Is_Abstract => True, Is_Limited => True)))));
+
+   --  a protected object (its state + operations), a single task (its body), and
+   --  a member procedure call "Object.Proc (Args)".
+   function Protected_Object (Name_Def : Cursor; Operations : Cursor_Array)
+     return Cursor is
+     (Add (B.Protected_Body
+             (Name       => Name_Def,
+              Operations => Add (B.Item_S (List => NL (Operations))))));
+   function Task_Unit (Name_Def, Body_Block : Cursor) return Cursor is
+     (Add (B.Task_Body (Name => Name_Def, Completion => Body_Block)));
+   function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
+     return Cursor is
+      Items : Node_List;
+   begin
+      for A of Args loop
+         Items.Append (Add (B.Positional_Association (Value => A)));
+      end loop;
+      return Add (B.Procedure_Call
+                    (Prefix  => Add (B.Selected_Component
+                       (Prefix   => Add (B.Used_Name (Definition => Object_Def)),
+                        Selector => Add (B.Used_Name (Definition => Proc_Def)))),
+                     Actuals => Add (B.Association_S (List => Items))));
+   end Member_Proc_Call;
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -2296,6 +2331,26 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (File_Stream, [Lit (5)])),
            Print (Sub_Call (File_Stream, [Lit (3)]))]);
 
+   --  declare
+   --     protected Counter is               -- a protected object: shared state
+   --        procedure Bump;                 --   + mutually-exclusive operations
+   --        function  Value return Integer;
+   --     private Count : Integer := 0; end Counter;
+   --     task Worker;                        -- a task: its body activates below
+   --     task body Worker is begin Counter.Bump; Counter.Bump; Counter.Bump; end;
+   --  begin Put_Line (Counter.Value); end;   -- 3, the task's work is visible
+   Tasking_Program : constant Cursor :=
+     Block_Stmt
+       ([Protected_Object (PO_Counter,
+           [Var_Decl (Count_PO, Lit (0)),
+            Sub_Body_Item (Bump_Def),
+            Sub_Body_Item (Value_Def)]),
+         Task_Unit (Worker_Def,
+           Blk ([], [Member_Proc_Call (PO_Counter, Bump_Def, []),
+                     Member_Proc_Call (PO_Counter, Bump_Def, []),
+                     Member_Proc_Call (PO_Counter, Bump_Def, [])]))],
+        [Print (Member_Call (PO_Counter, Value_Def, []))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2967,6 +3022,27 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Abstract_Limited_Formal_Program);
+
+   --  Tasking and protected types: a protected object encapsulates shared state
+   --  behind its operations (Bump mutates Count, Value reads it), and a task's
+   --  body runs to completion at activation, calling those operations.
+   New_Line;
+   Put_Line ("Executing (tasking + protected types):");
+   Put_Line ("    protected Counter is procedure Bump; function Value return Integer;");
+   Put_Line ("       private Count : Integer := 0; end Counter;");
+   Put_Line ("    procedure Bump  is begin Count := Count + 1; end;");
+   Put_Line ("    function  Value return Integer is begin return Count; end;");
+   Put_Line ("    task Worker; task body Worker is");
+   Put_Line ("       begin Counter.Bump; Counter.Bump; Counter.Bump; end;");
+   Put_Line ("    Put_Line (Counter.Value);   -- 3, after the task runs");
+   New_Line;
+   Put_Line ("Output:");
+   --  supply the protected operations' bodies
+   Complete (Bump_Def, Proc_Spec ([]),
+             Blk ([], [Assign (Count_PO, Bin (Op_Plus, Ref (Count_PO), Lit (1)))]));
+   Complete (Value_Def, Func_Spec ([]),
+             Blk ([], [Ret (Ref (Count_PO))]));
+   Diana.Interpreter.Run (Tasking_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

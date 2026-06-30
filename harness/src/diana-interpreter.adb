@@ -506,6 +506,8 @@ package body Diana.Interpreter is
                         Scope_Index : Positive);
    procedure Instantiate_Package (Name, Completion : Cursor;
                                   Env : in out Environment; Scope_Index : Positive);
+   procedure Run_Block_In (Block_Cursor : Cursor; Env : in out Environment;
+                           Scope_Index : Positive);
 
    --  Check a value against the predicate / invariant of Type_Name (the type
    --  name is bound as the placeholder the condition tests).
@@ -539,6 +541,8 @@ package body Diana.Interpreter is
    procedure Elaborate (Decls : Node_List; Env : in out Environment;
                         Scope_Index : Positive)
    is
+      Task_Bodies : Node_List;   --  task bodies, activated at end of this part
+
       procedure Declare_Objects (Names, Subtype_Spec, Init : Cursor) is
          Type_Name : constant String := Subtype_Name_Of (Subtype_Spec);
          Constrained : constant Boolean := Env.Predicates.Contains (Type_Name);
@@ -601,7 +605,40 @@ package body Diana.Interpreter is
             Instantiate_Package (As_Package_Declaration (D).Name,
                                  As_Package_Declaration (D).Completion,
                                  Env, Scope_Index);
+         elsif Is_Protected_Body (D) then
+            --  A protected object: its private state and operations live in a
+            --  fresh scope, bound by name to a Package_Value.  A protected
+            --  procedure mutates that state (Assign walks out to it); a
+            --  protected function reads it.  Mutual exclusion is trivial here
+            --  (the interpreter is sequential), so this is the executable core.
+            declare
+               Scope : constant Positive := Enter (Env, Scope_Index);
+            begin
+               Elaborate (As_Item_S (As_Protected_Body (D).Operations).List,
+                          Env, Scope);
+               Define (Env, Scope_Index, Spelling_Of (As_Protected_Body (D).Name),
+                       Static_Value'(Kind => Package_Value, Instance => Scope));
+            end;
+         elsif Is_Task_Body (D) then
+            --  A task: defer its body to activation at the end of this
+            --  declarative part (below), then run it to completion.
+            Task_Bodies.Append (D);
          end if;
+      end loop;
+
+      --  Activate the declared tasks (after the whole declarative part), running
+      --  each body to completion in a fresh scope — the sequential model of a
+      --  task's thread of control.
+      for T of Task_Bodies loop
+         declare
+            Completion : constant Cursor := As_Task_Body (T).Completion;
+            Scope      : constant Positive := Enter (Env, Scope_Index);
+         begin
+            if Is_Block (Completion) then
+               Run_Block_In (Completion, Env, Scope);
+            end if;
+            Leave (Env, Scope);
+         end;
       end loop;
    end Elaborate;
 
@@ -1772,27 +1809,45 @@ package body Diana.Interpreter is
 
       elsif Is_Procedure_Call (Stmt) then
          declare
-            Def  : constant Cursor :=
-              Definition_Of (As_Procedure_Call (Stmt).Prefix);
-            Name : constant String := Spelling_Of (Def);
-            Args : constant Node_List :=
+            Prefix : constant Cursor := As_Procedure_Call (Stmt).Prefix;
+            Args   : constant Node_List :=
               As_Association_S (As_Procedure_Call (Stmt).Actuals).List;
             Discard : Static_Value;
          begin
-            if Name = "Put_Line" or else Name = "Put" then
-               for A of Args loop
-                  declare
-                     V : constant Static_Value :=
-                       Evaluate (As_Positional_Association (A).Value, Env, Current);
-                  begin
-                     exit when Env.Raising;   --  the argument expression raised
-                     Put_Line (Image (V));
-                  end;
-               end loop;
-            elsif Is_Subprogram_Name (Def) then
-               Discard := Invoke (Def, Args, Env, Current);
+            if Is_Selected_Component (Prefix) then   --  Pkg.Proc / PO.Operation
+               declare
+                  Pkg : constant Static_Value :=
+                    Evaluate (As_Selected_Component (Prefix).Prefix, Env, Current);
+                  Sub : constant Cursor :=
+                    Definition_Of (As_Selected_Component (Prefix).Selector);
+               begin
+                  if Pkg.Kind /= Package_Value then
+                     raise Interpretation_Error with
+                       "selected procedure call on a non-package value";
+                  end if;
+                  Discard := Invoke (Sub, Args, Env, Current, Home => Pkg.Instance);
+               end;
             else
-               raise Interpretation_Error with "unknown procedure: " & Name;
+               declare
+                  Def  : constant Cursor := Definition_Of (Prefix);
+                  Name : constant String := Spelling_Of (Def);
+               begin
+                  if Name = "Put_Line" or else Name = "Put" then
+                     for A of Args loop
+                        declare
+                           V : constant Static_Value :=
+                             Evaluate (As_Positional_Association (A).Value, Env, Current);
+                        begin
+                           exit when Env.Raising;   --  the argument expression raised
+                           Put_Line (Image (V));
+                        end;
+                     end loop;
+                  elsif Is_Subprogram_Name (Def) then
+                     Discard := Invoke (Def, Args, Env, Current);
+                  else
+                     raise Interpretation_Error with "unknown procedure: " & Name;
+                  end if;
+               end;
             end if;
          end;
 

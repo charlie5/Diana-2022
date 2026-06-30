@@ -143,6 +143,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 - **Subunits:** a subprogram declared `is separate` raises until its subunit body
   is supplied; once the stub is completed in place, calling it runs the subunit.
 - **Scoping:** a lexical scope chain; locals shadow outer names.
+- **Tasking & protected types** (the single-threaded core): a protected object is
+  shared state behind operations (procedures mutate it, functions read it); a task
+  body runs to completion at activation.
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,
   `Contract_Cases`, and `Subprogram_Variant`; plus bare re-raise and
