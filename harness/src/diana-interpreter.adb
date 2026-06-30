@@ -110,6 +110,15 @@ package body Diana.Interpreter is
       Hash            => Ada.Strings.Hash,
       Equivalent_Keys => "=");
 
+   --  Enumeration types: the literal spellings in position order (so 'Val maps a
+   --  position back to the named value, and 'Succ / 'Pred step by name).
+   package Enum_Type_Maps is new Ada.Containers.Indefinite_Hashed_Maps
+     (Key_Type        => String,
+      Element_Type    => Name_Vectors.Vector,
+      Hash            => Ada.Strings.Hash,
+      Equivalent_Keys => "=",
+      "="             => Name_Vectors."=");
+
    Global_Scope : constant Positive := 1;
 
    --  In-flight control transfer.  At most one of Returning / Exiting / Jumping
@@ -126,6 +135,7 @@ package body Diana.Interpreter is
       Old_Values   : Value_Maps.Map;                 --  'Old snapshots during a Post check
       Predicates   : Predicate_Maps.Map;             --  predicate/invariant by type name
       Constrained  : Constraint_Maps.Map;            --  variable name -> its type name
+      Enum_Types   : Enum_Type_Maps.Map;             --  enum type name -> literal spellings
       Entries      : Cursor_Maps.Map;                --  protected entry name -> Entry_Body
       Accepts      : Cursor_Maps.Map;                --  task entry name -> Accept_Statement
       Accept_Guards : Cursor_Maps.Map;               --  guarded entry name -> guard expr
@@ -601,6 +611,21 @@ package body Diana.Interpreter is
          elsif Is_Type_Declaration (D) then
             Register_Predicates (Env, Spelling_Of (As_Type_Declaration (D).Name),
                                  As_Type_Declaration (D).Properties);
+            --  record an enumeration type's literals (in position order) so its
+            --  'Val / 'Succ / 'Pred attributes yield named values, not bare ints.
+            if Is_Enumeration_Type (As_Type_Declaration (D).Definition) then
+               declare
+                  Literals : Name_Vectors.Vector;
+               begin
+                  for Lit of As_Defining_Name_S (As_Enumeration_Type
+                    (As_Type_Declaration (D).Definition).Literals).List
+                  loop
+                     Literals.Append (Spelling_Of (Lit));
+                  end loop;
+                  Env.Enum_Types.Include
+                    (Spelling_Of (As_Type_Declaration (D).Name), Literals);
+               end;
+            end if;
          elsif Is_Subprogram_Body (D) then
             declare
                Designator : constant Cursor := As_Subprogram_Body (D).Designator;
@@ -1789,15 +1814,42 @@ package body Diana.Interpreter is
                      end if;
                   end;
                end if;
-               --  discrete attributes: enumeration values are their position, so
-               --  Succ / Pred are +/-1 and Pos / Val are the identity.
+               --  discrete attributes.  For an enumeration type (recorded in
+               --  Enum_Types), 'Val / 'Succ / 'Pred yield the named value at the
+               --  resulting position; otherwise the position is the value itself.
                declare
-                  Arg : constant Long_Long_Integer := Whole_Of (Arg_Val);
+                  Arg       : constant Long_Long_Integer := Whole_Of (Arg_Val);
+                  Type_Name : constant String := Spelling_Of
+                    (Definition_Of (As_Attribute_Reference (Prefix).Prefix));
+
+                  --  the value at position Pos of the prefix type: a named
+                  --  enumeration literal, or the bare integer for a non-enum type.
+                  function At_Position (Pos : Long_Long_Integer) return Static_Value is
+                  begin
+                     if not Env.Enum_Types.Contains (Type_Name) then
+                        return Int (Pos);
+                     end if;
+                     declare
+                        Literals : constant Name_Vectors.Vector :=
+                          Env.Enum_Types.Element (Type_Name);
+                     begin
+                        if Pos < 0 or else Pos >= Long_Long_Integer (Literals.Length)
+                        then
+                           raise Interpretation_Error with
+                             "'" & Attribute & ": position" & Pos'Image
+                             & " is out of range for " & Type_Name;
+                        end if;
+                        return (Kind     => Enum_Value,
+                                Pos      => Pos,
+                                Lit_Name => SU.To_Unbounded_String
+                                              (Literals (Positive (Pos + 1))));
+                     end;
+                  end At_Position;
                begin
-                  if    Attribute = "Succ" then return Int (Arg + 1);
-                  elsif Attribute = "Pred" then return Int (Arg - 1);
+                  if    Attribute = "Succ" then return At_Position (Arg + 1);
+                  elsif Attribute = "Pred" then return At_Position (Arg - 1);
                   elsif Attribute = "Pos"  then return Int (Arg);
-                  elsif Attribute = "Val"  then return Int (Arg);
+                  elsif Attribute = "Val"  then return At_Position (Arg);
                   else
                      raise Interpretation_Error with "unsupported attribute: " & Attribute;
                   end if;

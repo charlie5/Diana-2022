@@ -104,8 +104,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   record `(X => 1, Y => 2)` (indexing, selection, component assignment incl.
   nested targets `A (I).F` / `R.F (I)` / `A (I)(J)`, the
   `'First`/`'Last`/`'Length`/`'Range` attributes and **slices** `A (L .. H)`), and the
-  scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image`, the
-  real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
+  scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image` (for a
+  declared enumeration type, `'Val`/`'Succ`/`'Pred` yield the *named* literal),
+  the real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
   two-argument `'Min`/`'Max`, and `'Value` (parsing a string to a scalar).
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (over an array's elements, a record's components, or a string's characters,

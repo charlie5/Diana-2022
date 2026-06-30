@@ -1569,6 +1569,24 @@ procedure Interp_Demo is
            Print (Attr_Call (Color_Type, Pos_Attr, Ref (Blue_Lit))),          -- 2
            Print (Attr_Call (Color_Type, Val_Attr, Lit (1)))]);               -- 1
 
+   --  When the enumeration type is declared (so its literals are known),
+   --  'Val / 'Succ / 'Pred yield the *named* value, which prints by name and
+   --  still behaves as its position.
+   --  type Color is (Red, Green, Blue);
+   --  Put_Line (Color'Val (1)); Put_Line (Color'Succ (Red)); Put_Line (Color'Pred (Blue));
+   --  Put_Line (Color'Pos (Color'Val (2)));                                   -- 2
+   Enum_Attr_Program : constant Cursor :=
+     Block_Stmt
+       ([Type_Decl (Color_Type,
+           Add (B.Enumeration_Type (Literals => Add (B.Defining_Name_S
+             (List => NL ([Red_Lit, Green_Lit, Blue_Lit]))))),
+           [])],
+        [Print (Attr_Call (Color_Type, Val_Attr,  Lit (1))),          -- Green
+         Print (Attr_Call (Color_Type, Succ_Attr, Ref (Red_Lit))),    -- Green
+         Print (Attr_Call (Color_Type, Pred_Attr, Ref (Blue_Lit))),   -- Green
+         Print (Attr_Call (Color_Type, Pos_Attr,                      -- 2 (round-trip)
+                  Attr_Call (Color_Type, Val_Attr, Lit (2))))]);
+
    --  function Double (X : Integer) return Integer
    --     with Pre => X >= 0, Post => Result = X + X is begin return X + X; end;
    Double_Name : constant Cursor :=
@@ -3064,6 +3082,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Attr_Call_Program);
+
+   --  Enumeration 'Val / 'Succ / 'Pred yield named values once the type is
+   --  declared (its literals are then known to the interpreter).
+   New_Line;
+   Put_Line ("Executing (enumeration 'Val / 'Succ / 'Pred -> named values):");
+   Put_Line ("    type Color is (Red, Green, Blue);");
+   Put_Line ("    Put_Line (Color'Val (1)); Put_Line (Color'Succ (Red));");
+   Put_Line ("    Put_Line (Color'Pred (Blue)); Put_Line (Color'Pos (Color'Val (2)));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Enum_Attr_Program);   -- Green, Green, Green, 2
 
    --  Runtime contract checks: a pragma Assert that holds, and a subprogram
    --  Pre/Post that hold.
