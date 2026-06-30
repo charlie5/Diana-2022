@@ -106,7 +106,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   aggregates with value
   semantics — positional `(1, 2, 3)`, named-index `(1 => 10, others => 0)`, and
   record `(X => 1, Y => 2)` (indexing, selection, component assignment incl.
-  nested targets `A (I).F` / `R.F (I)` / `A (I)(J)`, the
+  nested targets `A (I).F` / `R.F (I)` / `A (I)(J)`, multidimensional `A (I, J)`
+  (an array of rows), the
   `'First`/`'Last`/`'Length`/`'Range` attributes, **slices** `A (L .. H)`, and
   rendering via `Put_Line`/`'Image` — `(1, 2, 3)` / `(X => 1, Y => 2)`,
   recursively), and the

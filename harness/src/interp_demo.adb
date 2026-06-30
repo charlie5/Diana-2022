@@ -603,6 +603,10 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Pi_N")));
    Num_Max      : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Max_N")));
+
+   --  multidimensional-array demo variable.
+   MD_M         : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("M")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -1230,6 +1234,11 @@ procedure Interp_Demo is
      (Add (B.Indexed_Component
              (Prefix  => Array_Ref,
               Indices => Add (B.Expression_S (List => NL ([Index_Expr]))))));
+   --  multidimensional indexing "A (I, J, ...)".
+   function Index_At_N (Array_Ref : Cursor; Indices : Cursor_Array) return Cursor is
+     (Add (B.Indexed_Component
+             (Prefix  => Array_Ref,
+              Indices => Add (B.Expression_S (List => NL (Indices))))));
 
    --  record aggregate "(Field => Value, ...)" and selection "R.Field".
    function Field_Assoc (Field_Def, Value : Cursor) return Cursor is
@@ -3073,6 +3082,18 @@ procedure Interp_Demo is
         [Print (Ref (Num_Pi)),                              -- 3.1400
          Print (Bin (Op_Mul, Ref (Num_Max), Lit (2)))]);    -- 200
 
+   --  Multidimensional array indexing "M (I, J)" (modelled as an array of rows).
+   --  M := ((1,2,3),(4,5,6)); Put_Line (M (1,2)); Put_Line (M (2,3));   -- 2, 6
+   --  M (1,3) := 99; Put_Line (M (1,3)); Put_Line (M (2,3));            -- 99, 6
+   Multidim_Program : constant Cursor :=
+     Seq ([Assign (MD_M, Arr ([Arr ([Lit (1), Lit (2), Lit (3)]),
+                               Arr ([Lit (4), Lit (5), Lit (6)])])),
+           Print (Index_At_N (Ref (MD_M), [Lit (1), Lit (2)])),   -- 2
+           Print (Index_At_N (Ref (MD_M), [Lit (2), Lit (3)])),   -- 6
+           Assign_To (Index_At_N (Ref (MD_M), [Lit (1), Lit (3)]), Lit (99)),
+           Print (Index_At_N (Ref (MD_M), [Lit (1), Lit (3)])),   -- 99
+           Print (Index_At_N (Ref (MD_M), [Lit (2), Lit (3)]))]); -- 6 (intact)
+
    --  Composite equality: arrays and records compare element-/component-wise.
    --  (1,2,3) = (1,2,3) -> True;  (1,2,3) = (1,9,3) -> False;
    --  (1,2) /= (1,2,3) -> True (lengths differ);  records likewise.
@@ -4111,6 +4132,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Number_Decl_Program);   -- 3.1400, 200
+
+   --  Multidimensional array indexing M (I, J).
+   New_Line;
+   Put_Line ("Executing (multidimensional array indexing):");
+   Put_Line ("    M := ((1,2,3),(4,5,6));  Put_Line (M (1,2)); Put_Line (M (2,3));");
+   Put_Line ("    M (1,3) := 99; Put_Line (M (1,3)); Put_Line (M (2,3));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Multidim_Program);   -- 2, 6, 99, 6
 
    --  Composite equality: arrays and records compared element-/component-wise.
    New_Line;

@@ -1679,33 +1679,41 @@ package body Diana.Interpreter is
             end if;
          end;
 
-      elsif Is_Indexed_Component (Expr) then                  --  A (I)
+      elsif Is_Indexed_Component (Expr) then                  --  A (I) / A (I, J)
+         --  A multidimensional index "A (I, J)" folds over the index list as
+         --  successive single indexings "A (I)(J)" (the IR models a 2-D array
+         --  as an array of arrays).
          declare
-            Arr : constant Static_Value :=
+            Arr : Static_Value :=
               Evaluate (As_Indexed_Component (Expr).Prefix, Env, Current);
             Indices : constant Node_List :=
               As_Expression_S (As_Indexed_Component (Expr).Indices).List;
             I : Long_Long_Integer;
          begin
-            if Arr.Kind = String_Value then            --  S (I) => the I-th character
-               declare
-                  S : constant String := SU.To_String (Arr.Text);
-               begin
-                  I := Whole_Of (Evaluate (Indices (1), Env, Current));
-                  if I < 1 or else I > S'Length then
-                     raise Interpretation_Error with "string index out of range";
+            for K in 1 .. Natural (Indices.Length) loop
+               if Arr.Kind = String_Value then       --  S (I) => the I-th character
+                  declare
+                     S : constant String := SU.To_String (Arr.Text);
+                  begin
+                     I := Whole_Of (Evaluate (Indices (K), Env, Current));
+                     if I < 1 or else I > S'Length then
+                        raise Interpretation_Error with "string index out of range";
+                     end if;
+                     Arr := Str (SU.To_Unbounded_String (S (Natural (I) .. Natural (I))));
+                  end;
+               elsif Arr.Kind = Array_Value then
+                  I := Whole_Of (Evaluate (Indices (K), Env, Current));
+                  if I < 1
+                    or else I > Long_Long_Integer (Env.Arrays (Arr.Elements).Length)
+                  then
+                     raise Interpretation_Error with "array index out of range";
                   end if;
-                  return Str (SU.To_Unbounded_String
-                    (S (Natural (I) .. Natural (I))));
-               end;
-            elsif Arr.Kind /= Array_Value then
-               raise Interpretation_Error with "indexing a non-array value";
-            end if;
-            I := Whole_Of (Evaluate (Indices (1), Env, Current));
-            if I < 1 or else I > Long_Long_Integer (Env.Arrays (Arr.Elements).Length) then
-               raise Interpretation_Error with "array index out of range";
-            end if;
-            return Env.Arrays (Arr.Elements).Element (Positive (I));
+                  Arr := Env.Arrays (Arr.Elements).Element (Positive (I));
+               else
+                  raise Interpretation_Error with "indexing a non-array value";
+               end if;
+            end loop;
+            return Arr;
          end;
 
       elsif Is_Slice (Expr) then                              --  A (Low .. High)
@@ -2575,18 +2583,33 @@ package body Diana.Interpreter is
                   Env.Heap.Replace_Element (Acc.Address, Copy (Env, Value));
                end;
 
-            elsif Is_Indexed_Component (Target) then  --  A (I) := Value
+            elsif Is_Indexed_Component (Target) then  --  A (I) := / A (I, J) :=
                declare
-                  Arr : constant Static_Value :=
+                  Arr : Static_Value :=
                     Evaluate (As_Indexed_Component (Target).Prefix, Env, Current);
                   Indices : constant Node_List :=
                     As_Expression_S (As_Indexed_Component (Target).Indices).List;
+                  N : constant Natural := Natural (Indices.Length);
                   I : Long_Long_Integer;
                begin
+                  --  navigate to the innermost array (all indices but the last),
+                  --  reading the stored handle so the mutation lands in place.
+                  for K in 1 .. N - 1 loop
+                     if Arr.Kind /= Array_Value then
+                        raise Interpretation_Error with "indexing a non-array value";
+                     end if;
+                     I := Whole_Of (Evaluate (Indices (K), Env, Current));
+                     if I < 1
+                       or else I > Long_Long_Integer (Env.Arrays (Arr.Elements).Length)
+                     then
+                        raise Interpretation_Error with "array index out of range";
+                     end if;
+                     Arr := Env.Arrays (Arr.Elements).Element (Positive (I));
+                  end loop;
                   if Arr.Kind /= Array_Value then
                      raise Interpretation_Error with "indexing a non-array value";
                   end if;
-                  I := Whole_Of (Evaluate (Indices (1), Env, Current));
+                  I := Whole_Of (Evaluate (Indices (N), Env, Current));
                   if I < 1
                     or else I > Long_Long_Integer (Env.Arrays (Arr.Elements).Length)
                   then
