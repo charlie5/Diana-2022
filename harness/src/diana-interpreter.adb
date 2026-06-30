@@ -1442,6 +1442,30 @@ package body Diana.Interpreter is
             return Env.Arrays (Arr.Elements).Element (Positive (I));
          end;
 
+      elsif Is_Slice (Expr) then                              --  A (Low .. High)
+         declare
+            Arr : constant Static_Value :=
+              Evaluate (As_Slice (Expr).Prefix, Env, Current);
+            Low, High : Long_Long_Integer;
+            Slice : Value_Vectors.Vector;     --  a fresh (1-based) sub-array
+         begin
+            if Arr.Kind /= Array_Value then
+               raise Interpretation_Error with "slicing a non-array value";
+            end if;
+            Eval_Range (As_Slice (Expr).Discrete_Range, Env, Current, Low, High);
+            if Low < 1
+              or else High > Long_Long_Integer (Env.Arrays (Arr.Elements).Length)
+            then
+               raise Interpretation_Error with "slice bounds out of range";
+            end if;
+            for I in Low .. High loop      --  empty when Low > High
+               Slice.Append (Copy (Env,
+                 Env.Arrays (Arr.Elements).Element (Positive (I))));
+            end loop;
+            Env.Arrays.Append (Slice);
+            return (Kind => Array_Value, Elements => Env.Arrays.Last_Index);
+         end;
+
       elsif Is_Selected_Component (Expr) then                 --  R.Field / Pkg.Member
          declare
             Prefix_Value : constant Static_Value :=

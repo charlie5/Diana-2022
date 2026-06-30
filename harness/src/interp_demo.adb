@@ -526,6 +526,9 @@ procedure Interp_Demo is
    --  quantified-expression demo: the quantifier variable "I".
    Q_I          : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("I")));
+   --  slice demo: an array variable "Arr".
+   SL_Arr       : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Arr")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -928,6 +931,13 @@ procedure Interp_Demo is
      return Cursor is (Quantified (Add (B.For_All), Param_Def, Lo, Hi, Pred));
    function For_Some_Expr (Param_Def : Cursor; Lo, Hi : Integer; Pred : Cursor)
      return Cursor is (Quantified (Add (B.For_Some), Param_Def, Lo, Hi, Pred));
+
+   --  an array slice "Array_Ref (Lo .. Hi)".
+   function Slice_Of (Array_Ref : Cursor; Lo, Hi : Integer) return Cursor is
+     (Add (B.Slice
+             (Prefix         => Array_Ref,
+              Discrete_Range => Add (B.Range_Bounds (Lower => Lit (Lo),
+                                                     Upper => Lit (Hi))))));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2589,6 +2599,18 @@ procedure Interp_Demo is
            Print (For_Some_Expr (Q_I, 1, 5, Bin (Op_Eq, Ref (Q_I), Lit (4)))),
            Print (For_Some_Expr (Q_I, 1, 5, Bin (Op_Eq, Ref (Q_I), Lit (9))))]);
 
+   --  declare Arr : ... := (10, 20, 30, 40, 50);
+   --  begin Put_Line (Arr (2 .. 4)'Length);   -- 3   (the slice has 3 elements)
+   --        Put_Line ((Arr (2 .. 4)) (1));     -- 20  (slice is 1-based here)
+   --        Put_Line ((Arr (2 .. 4)) (3)); end; -- 40
+   Slice_Program : constant Cursor :=
+     Block_Stmt
+       ([Var_Decl (SL_Arr,
+           Arr ([Lit (10), Lit (20), Lit (30), Lit (40), Lit (50)]))],
+        [Print (Attr (Slice_Of (Ref (SL_Arr), 2, 4), Length_Attr)),
+         Print (Index_At (Slice_Of (Ref (SL_Arr), 2, 4), Lit (1))),
+         Print (Index_At (Slice_Of (Ref (SL_Arr), 2, 4), Lit (3)))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3354,6 +3376,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Quantified_Program);   -- True, False, True, False
+
+   --  Array slices: "Arr (Low .. High)" yields a sub-array (value semantics).
+   New_Line;
+   Put_Line ("Executing (array slices):");
+   Put_Line ("    Arr := (10, 20, 30, 40, 50);");
+   Put_Line ("    Put_Line (Arr (2 .. 4)'Length);  Put_Line ((Arr (2 .. 4))(1));");
+   Put_Line ("    Put_Line ((Arr (2 .. 4))(3));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Slice_Program);   -- 3, 20, 40
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
