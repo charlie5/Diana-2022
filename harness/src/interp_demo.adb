@@ -565,6 +565,15 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("B")));
    Cat_C        : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("C")));
+
+   --  nested-composite-assignment demo: an array of records, a record with an
+   --  array component, and an array of arrays.
+   NC_Pts       : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Pts")));
+   NC_Box       : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Box")));
+   NC_Mtx       : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Mtx")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -2789,6 +2798,29 @@ procedure Interp_Demo is
            Print (Index_At (Ref (Cat_C), Lit (1))),          -- 0
            Print (Index_At (Ref (Cat_C), Lit (3)))]);        -- 5
 
+   --  Nested composite assignment, mutating a component of a component in place:
+   --  Pts := ((X=>1,Y=>2), (X=>3,Y=>4));  Pts (1).Y := 99;     -- array of records
+   --  Box := (X => (1,2,3));              Box.X (2) := 50;     -- record of array
+   --  Mtx := ((1,2), (3,4));              Mtx (1)(2) := 9;     -- array of arrays
+   Nested_Assign_Program : constant Cursor :=
+     Seq ([Assign (NC_Pts,
+             Arr ([Rec ([Field_Assoc (X_Field, Lit (1)), Field_Assoc (Y_Field, Lit (2))]),
+                   Rec ([Field_Assoc (X_Field, Lit (3)), Field_Assoc (Y_Field, Lit (4))])])),
+           Assign_To (Field_Of (Index_At (Ref (NC_Pts), Lit (1)), Y_Field), Lit (99)),
+           Print (Field_Of (Index_At (Ref (NC_Pts), Lit (1)), Y_Field)),   -- 99
+           Print (Field_Of (Index_At (Ref (NC_Pts), Lit (2)), Y_Field)),   -- 4 (intact)
+
+           Assign (NC_Box, Rec ([Field_Assoc (X_Field,
+                     Arr ([Lit (1), Lit (2), Lit (3)]))])),
+           Assign_To (Index_At (Field_Of (Ref (NC_Box), X_Field), Lit (2)), Lit (50)),
+           Print (Index_At (Field_Of (Ref (NC_Box), X_Field), Lit (2))),   -- 50
+
+           Assign (NC_Mtx,
+             Arr ([Arr ([Lit (1), Lit (2)]), Arr ([Lit (3), Lit (4)])])),
+           Assign_To (Index_At (Index_At (Ref (NC_Mtx), Lit (1)), Lit (2)), Lit (9)),
+           Print (Index_At (Index_At (Ref (NC_Mtx), Lit (1)), Lit (2))),   -- 9
+           Print (Index_At (Index_At (Ref (NC_Mtx), Lit (2)), Lit (1)))]); -- 3 (intact)
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3647,6 +3679,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Concat_Program);   -- 5, 1, 5, 4, 99, 0, 5
+
+   --  Nested composite assignment: mutate a component of a component in place.
+   New_Line;
+   Put_Line ("Executing (nested composite assignment):");
+   Put_Line ("    Pts := ((X=>1,Y=>2),(X=>3,Y=>4)); Pts (1).Y := 99;  -- array of records");
+   Put_Line ("    Box := (X => (1,2,3));            Box.X (2) := 50;  -- record of array");
+   Put_Line ("    Mtx := ((1,2),(3,4));             Mtx (1)(2) := 9;  -- array of arrays");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Nested_Assign_Program);   -- 99, 4, 50, 9, 3
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

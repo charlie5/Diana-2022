@@ -99,7 +99,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   arrays** (array & array, array & element, element & array), and array / record
   aggregates with value
   semantics — positional `(1, 2, 3)`, named-index `(1 => 10, others => 0)`, and
-  record `(X => 1, Y => 2)` (indexing, selection, component assignment, the
+  record `(X => 1, Y => 2)` (indexing, selection, component assignment incl.
+  nested targets `A (I).F` / `R.F (I)` / `A (I)(J)`, the
   `'First`/`'Last`/`'Length`/`'Range` attributes and **slices** `A (L .. H)`), and the
   scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image`, the
   real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
