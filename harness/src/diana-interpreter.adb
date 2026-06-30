@@ -1925,6 +1925,21 @@ package body Diana.Interpreter is
       if Is_Range_Bounds (Discrete_Range) then
          Low  := Whole_Of (Evaluate (As_Range_Bounds (Discrete_Range).Lower, Env, Current));
          High := Whole_Of (Evaluate (As_Range_Bounds (Discrete_Range).Upper, Env, Current));
+      elsif Is_Attribute_Reference (Discrete_Range)
+        and then Spelling_Of (Definition_Of
+                   (As_Attribute_Reference (Discrete_Range).Attribute)) = "Range"
+      then
+         --  A'Range == A'First .. A'Last (arrays are 1-based: 1 .. Length)
+         declare
+            Arr : constant Static_Value :=
+              Evaluate (As_Attribute_Reference (Discrete_Range).Prefix, Env, Current);
+         begin
+            if Arr.Kind /= Array_Value then
+               raise Interpretation_Error with "'Range requires an array value";
+            end if;
+            Low  := 1;
+            High := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
+         end;
       else
          raise Interpretation_Error with "unsupported discrete range";
       end if;

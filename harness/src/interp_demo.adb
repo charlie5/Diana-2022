@@ -148,6 +148,8 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Last")));
    Length_Attr : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Length")));
+   Range_Attr  : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Range")));
    Succ_Attr   : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Succ")));
    Pred_Attr   : constant Cursor :=
@@ -673,6 +675,16 @@ procedure Interp_Demo is
                 (Parameter      => Param_Def,
                  Discrete_Range => Add (B.Range_Bounds (Lower => Low_Expr,
                                                         Upper => High_Expr)))))),
+              Statements => Body_Seq)));
+
+   --  "for Param_Def in <Discrete_Range> loop Body_Seq end loop", where the
+   --  range is given directly (e.g. an A'Range attribute reference).
+   function For_In_Discrete (Param_Def, Discrete_Range, Body_Seq : Cursor)
+     return Cursor is
+     (Add (B.Loop_Statement
+             (Iteration => Add (B.For_Loop (Iterator => Add (B.Range_Iterator
+                (Parameter      => Param_Def,
+                 Discrete_Range => Discrete_Range)))),
               Statements => Body_Seq)));
 
    --  "for Param_Def of Iterable [when Filter] loop Body_Seq end loop".
@@ -1484,6 +1496,18 @@ procedure Interp_Demo is
                          Attr (Ref (Arr_Def), First_Attr),
                          Attr (Ref (Arr_Def), Last_Attr),
                          Seq ([Print (Index_At (Ref (Arr_Def), Ref (I_Def)))]))]);
+
+   --  Arr := (10, 20, 30);
+   --  Total := 0; for I in Arr'Range loop Total := Total + Arr (I); end loop;
+   --  Put_Line (Total);                                                  -- 60
+   Range_Attr_Program : constant Cursor :=
+     Seq ([Assign (Arr_Def, Arr ([Lit (10), Lit (20), Lit (30)])),
+           Assign (Total_Def, Lit (0)),
+           For_In_Discrete (I_Def, Attr (Ref (Arr_Def), Range_Attr),
+             Seq ([Assign (Total_Def,
+                     Bin (Op_Plus, Ref (Total_Def),
+                          Index_At (Ref (Arr_Def), Ref (I_Def))))])),
+           Print (Ref (Total_Def))]);                                     -- 60
 
    --  type Color is (Red, Green, Blue);  C := Green;  Put_Line (C);          -- Green
    --  case C is when Red => 10; when Green => 20; when Blue => 30; end case;  -- 20
@@ -2896,6 +2920,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Attribute_Program);
+
+   --  The 'Range attribute as a discrete range: for I in Arr'Range loop ...
+   New_Line;
+   Put_Line ("Executing (the 'Range attribute):");
+   Put_Line ("    Arr := (10, 20, 30);  Total := 0;");
+   Put_Line ("    for I in Arr'Range loop Total := Total + Arr (I); end loop;");
+   Put_Line ("    Put_Line (Total);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Range_Attr_Program);   -- 60
 
    --  Enumeration-typed case and for (literals are their 0-based position).
    New_Line;
