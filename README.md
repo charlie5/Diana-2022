@@ -99,7 +99,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   character array: `S'Length`/`'First`/`'Last`/`'Range`, indexing `S (I)`,
   slicing `S (L .. H)`), access
   (`new`, `.all`, `null`, aliasing), `&` concatenation over strings **and
-  arrays** (array & array, array & element, element & array), and array / record
+  arrays** (array & array, array & element, element & array), composite `=`/`/=`
+  over arrays and records (element-/component-wise), and array / record
   aggregates with value
   semantics — positional `(1, 2, 3)`, named-index `(1 => 10, others => 0)`, and
   record `(X => 1, Y => 2)` (indexing, selection, component assignment incl.

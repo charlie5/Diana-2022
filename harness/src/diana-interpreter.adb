@@ -953,6 +953,41 @@ package body Diana.Interpreter is
             return SU."=" (A.Text, B.Text);
          elsif A.Kind = Access_Value and then B.Kind = Access_Value then
             return A.Address = B.Address;   --  same designated object (or both null)
+         elsif A.Kind = Array_Value and then B.Kind = Array_Value then
+            --  array equality: same length and equal elements (element-wise).
+            declare
+               EA : constant Value_Vectors.Vector := Env.Arrays (A.Elements);
+               EB : constant Value_Vectors.Vector := Env.Arrays (B.Elements);
+            begin
+               if Natural (EA.Length) /= Natural (EB.Length) then
+                  return False;
+               end if;
+               for I in 1 .. Natural (EA.Length) loop
+                  if not Equal (EA (I), EB (I)) then
+                     return False;
+                  end if;
+               end loop;
+               return True;
+            end;
+         elsif A.Kind = Record_Value and then B.Kind = Record_Value then
+            --  record equality: same components, each pair equal.
+            declare
+               FA : constant Value_Maps.Map := Env.Records (A.Fields);
+               FB : constant Value_Maps.Map := Env.Records (B.Fields);
+            begin
+               if Natural (FA.Length) /= Natural (FB.Length) then
+                  return False;
+               end if;
+               for C in FA.Iterate loop
+                  if not FB.Contains (Value_Maps.Key (C))
+                    or else not Equal (Value_Maps.Element (C),
+                                       FB.Element (Value_Maps.Key (C)))
+                  then
+                     return False;
+                  end if;
+               end loop;
+               return True;
+            end;
          else
             raise Interpretation_Error with "incompatible operands in comparison";
          end if;

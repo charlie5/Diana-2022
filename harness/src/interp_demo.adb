@@ -53,6 +53,7 @@ procedure Interp_Demo is
    Op_Gt    : constant Cursor := Add (B.Op_Greater);
    Op_Ge    : constant Cursor := Add (B.Op_Greater_Equal);
    Op_Eq    : constant Cursor := Add (B.Op_Equal);
+   Op_Ne    : constant Cursor := Add (B.Op_Not_Equal);
    Op_Mod   : constant Cursor := Add (B.Op_Modulo);
    Op_Cat   : constant Cursor := Add (B.Op_Concatenate);
    Sum_Def  : constant Cursor :=
@@ -2923,6 +2924,23 @@ procedure Interp_Demo is
            Print (Bin (Op_Cat, Char_Lit ('H'), Char_Lit ('i'))),  -- Hi
            Print (Bin (Op_Eq, Char_Lit ('X'), Str_Lit ("X")))]);  -- True
 
+   --  Composite equality: arrays and records compare element-/component-wise.
+   --  (1,2,3) = (1,2,3) -> True;  (1,2,3) = (1,9,3) -> False;
+   --  (1,2) /= (1,2,3) -> True (lengths differ);  records likewise.
+   Composite_Eq_Program : constant Cursor :=
+     Seq ([Print (Bin (Op_Eq, Arr ([Lit (1), Lit (2), Lit (3)]),
+                               Arr ([Lit (1), Lit (2), Lit (3)]))),       -- True
+           Print (Bin (Op_Eq, Arr ([Lit (1), Lit (2), Lit (3)]),
+                               Arr ([Lit (1), Lit (9), Lit (3)]))),       -- False
+           Print (Bin (Op_Ne, Arr ([Lit (1), Lit (2)]),
+                               Arr ([Lit (1), Lit (2), Lit (3)]))),       -- True
+           Print (Bin (Op_Eq,
+                    Rec ([Field_Assoc (X_Field, Lit (1)), Field_Assoc (Y_Field, Lit (2))]),
+                    Rec ([Field_Assoc (X_Field, Lit (1)), Field_Assoc (Y_Field, Lit (2))]))),  -- True
+           Print (Bin (Op_Eq,
+                    Rec ([Field_Assoc (X_Field, Lit (1)), Field_Assoc (Y_Field, Lit (2))]),
+                    Rec ([Field_Assoc (X_Field, Lit (1)), Field_Assoc (Y_Field, Lit (9))])))]); -- False
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3859,6 +3877,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Char_Lit_Program);   -- A, Hi, True
+
+   --  Composite equality: arrays and records compared element-/component-wise.
+   New_Line;
+   Put_Line ("Executing (composite equality of arrays and records):");
+   Put_Line ("    Put_Line ((1,2,3) = (1,2,3)); Put_Line ((1,2,3) = (1,9,3));");
+   Put_Line ("    Put_Line ((1,2) /= (1,2,3));");
+   Put_Line ("    Put_Line ((X=>1,Y=>2) = (X=>1,Y=>2)); Put_Line ((X=>1,Y=>2) = (X=>1,Y=>9));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Composite_Eq_Program);   -- True, False, True, True, False
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
