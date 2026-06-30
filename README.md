@@ -101,8 +101,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   semantics — positional `(1, 2, 3)`, named-index `(1 => 10, others => 0)`, and
   record `(X => 1, Y => 2)` (indexing, selection, component assignment, the
   `'First`/`'Last`/`'Length`/`'Range` attributes and **slices** `A (L .. H)`), and the
-  scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image` and the
-  real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`.
+  scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image`, the
+  real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
+  two-argument `'Min`/`'Max`.
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (over an array's elements or a record's components, with the Ada 2022 `when`
   filter), `case` (over integers or enumerations — an enumeration value carries

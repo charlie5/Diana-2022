@@ -1697,9 +1697,15 @@ package body Diana.Interpreter is
             declare
                Attribute : constant String := Spelling_Of
                  (Definition_Of (As_Attribute_Reference (Prefix).Attribute));
-               Arg_Val : constant Static_Value :=
-                 Evaluate (As_Attribute_Call (Expr).Argument, Env, Current);
+               Args : constant Node_List :=
+                 As_Expression_S (As_Attribute_Call (Expr).Arguments).List;
+               Arg_Val : Static_Value;
             begin
+               if Args.Is_Empty then
+                  raise Interpretation_Error with
+                    "'" & Attribute & " requires an argument";
+               end if;
+               Arg_Val := Evaluate (Args (1), Env, Current);
                --  'Image renders any value to its string form (the interpreter's
                --  Image — note: no Ada-style leading space for non-negatives).
                if Attribute = "Image" then
@@ -1713,6 +1719,29 @@ package body Diana.Interpreter is
                   return Real_V (Long_Long_Float'Truncation (Real_Of (Arg_Val)));
                elsif Attribute = "Rounding" then
                   return Real_V (Long_Long_Float'Rounding (Real_Of (Arg_Val)));
+               --  'Min / 'Max: two arguments; integer result if both integer,
+               --  else real.  [Ada 2022 RM 3.5]
+               elsif Attribute = "Min" or else Attribute = "Max" then
+                  if Natural (Args.Length) < 2 then
+                     raise Interpretation_Error with
+                       "'" & Attribute & " requires two arguments";
+                  end if;
+                  declare
+                     Second : constant Static_Value :=
+                       Evaluate (Args (2), Env, Current);
+                  begin
+                     if Arg_Val.Kind = Integer_Value
+                       and then Second.Kind = Integer_Value
+                     then
+                        return Int (if Attribute = "Min"
+                                    then Long_Long_Integer'Min (Arg_Val.Whole, Second.Whole)
+                                    else Long_Long_Integer'Max (Arg_Val.Whole, Second.Whole));
+                     else
+                        return Real_V (if Attribute = "Min"
+                                       then Long_Long_Float'Min (Real_Of (Arg_Val), Real_Of (Second))
+                                       else Long_Long_Float'Max (Real_Of (Arg_Val), Real_Of (Second)));
+                     end if;
+                  end;
                end if;
                --  discrete attributes: enumeration values are their position, so
                --  Succ / Pred are +/-1 and Pos / Val are the identity.

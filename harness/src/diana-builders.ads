@@ -1206,14 +1206,14 @@ package Diana.Builders is
       Expression_Type : Cursor := No_Element;
       Static_Value    : Diana.Static_Value := (Kind => No_Value);
       Prefix          : Cursor := No_Element;
-      Argument        : Cursor := No_Element)
+      Arguments       : Cursor := No_Element)
       return Diana.Nodes.Attribute_Call
    is (Source_Position => Source_Position,
        Comments => Comments,
        Expression_Type => Expression_Type,
        Static_Value => Static_Value,
        Prefix => Prefix,
-       Argument => Argument);
+       Arguments => Arguments);
 
    function Function_Call
      (Source_Position    : Diana.Source_Position := No_Position;

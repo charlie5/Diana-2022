@@ -413,8 +413,8 @@ package Diana.Nodes is
       Attribute : Cursor := No_Element;
    end record;
    type Attribute_Call is new Name with record
-      Prefix   : Cursor := No_Element;
-      Argument : Cursor := No_Element;
+      Prefix    : Cursor := No_Element;
+      Arguments : Cursor := No_Element;
    end record;
    type Function_Call is new Name with record
       Prefix             : Cursor := No_Element;

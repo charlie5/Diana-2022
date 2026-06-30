@@ -164,6 +164,10 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Access")));
    Image_Attr  : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Image")));
+   Min_Attr    : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Min")));
+   Max_Attr    : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Max")));
    Floor_Attr      : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Floor")));
    Ceiling_Attr    : constant Cursor :=
@@ -1240,13 +1244,17 @@ procedure Interp_Demo is
              (Prefix    => Prefix,
               Attribute => Add (B.Used_Name (Definition => Attr_Def)))));
 
-   --  "Type_Def'Attr (Arg)" -- a scalar attribute ('Succ / 'Pred / 'Pos / 'Val).
-   function Attr_Call (Type_Def, Attr_Def, Arg : Cursor) return Cursor is
+   --  "Type_Def'Attr (Args...)" -- an attribute with arguments (e.g. the scalar
+   --  'Succ / 'Pred / 'Pos / 'Val, or the two-argument 'Min / 'Max).
+   function Attr_Call_N (Type_Def, Attr_Def : Cursor; Args : Cursor_Array)
+     return Cursor is
      (Add (B.Attribute_Call
-             (Prefix   => Add (B.Attribute_Reference
+             (Prefix    => Add (B.Attribute_Reference
                 (Prefix    => Add (B.Used_Name (Definition => Type_Def)),
                  Attribute => Add (B.Used_Name (Definition => Attr_Def)))),
-              Argument => Arg)));
+              Arguments => Add (B.Expression_S (List => NL (Args))))));
+   function Attr_Call (Type_Def, Attr_Def, Arg : Cursor) return Cursor is
+     (Attr_Call_N (Type_Def, Attr_Def, [Arg]));
 
    --  "raise Exc [with Message];", a "when Exc => Stmts" handler, and a block
    --  statement with exception handlers.
@@ -2726,6 +2734,17 @@ procedure Interp_Demo is
            Print (Attr_Call (Float_Type, Truncation_Attr, Real_Lit ("3.9"))),
            Print (Attr_Call (Float_Type, Rounding_Attr,   Real_Lit ("3.5")))]);
 
+   --  two-argument attributes: Integer'Min / 'Max and Float'Min / 'Max.
+   --  Put_Line (Integer'Min (3, 7)); Put_Line (Integer'Max (3, 7));   -- 3, 7
+   --  Put_Line (Float'Max (1.5, 2.5));                                -- 2.5000
+   MinMax_Program : constant Cursor :=
+     Seq ([Print (Attr_Call_N (Int_Type,   Min_Attr, [Lit (3), Lit (7)])),  -- 3
+           Print (Attr_Call_N (Int_Type,   Max_Attr, [Lit (3), Lit (7)])),  -- 7
+           Print (Attr_Call_N (Float_Type, Min_Attr,
+                    [Real_Lit ("1.5"), Real_Lit ("2.5")])),                 -- 1.5000
+           Print (Attr_Call_N (Float_Type, Max_Attr,
+                    [Real_Lit ("1.5"), Real_Lit ("2.5")]))]);               -- 2.5000
+
    --  declare Arr    : ... := (1 => 10, 2 => 20, 3 => 30);
    --          Sparse : ... := (1 => 100, 3 => 300, others => 0);
    --  begin Put_Line (Arr (2)); Put_Line (Sparse (2)); Put_Line (Sparse (3)); end;
@@ -3585,6 +3604,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Real_Attr_Program);   -- 3.0000, 4.0000, 3.0000, 4.0000
+
+   --  Two-argument attributes 'Min / 'Max (the IR's Attribute_Call is n-ary).
+   New_Line;
+   Put_Line ("Executing (two-argument 'Min / 'Max):");
+   Put_Line ("    Put_Line (Integer'Min (3, 7)); Put_Line (Integer'Max (3, 7));");
+   Put_Line ("    Put_Line (Float'Min (1.5, 2.5)); Put_Line (Float'Max (1.5, 2.5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (MinMax_Program);   -- 3, 7, 1.5000, 2.5000
 
    --  Named array aggregates: "N => V" index choices, with "others => V" filling
    --  the gaps.

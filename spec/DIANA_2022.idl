@@ -493,8 +493,8 @@ Structure DIANA_2022 Root Diana_Node Is
           Attribute : Name;  -- a predefined Attribute_Name
 
     Attribute_Call =>
-          Prefix   : Name,
-          Argument : Expression;
+          Prefix    : Name,
+          Arguments : Expression_S;  -- one or more (e.g. T'Min (A, B))
 
     -- 6.4 calls and operators (one node for both)                 [DIANA]
     Function_Call =>
