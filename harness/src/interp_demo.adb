@@ -47,6 +47,7 @@ procedure Interp_Demo is
    Op_Plus  : constant Cursor := Add (B.Op_Plus);
    Op_Minus : constant Cursor := Add (B.Op_Minus);
    Op_Mul   : constant Cursor := Add (B.Op_Multiply);
+   Op_Div   : constant Cursor := Add (B.Op_Divide);
    Op_Le    : constant Cursor := Add (B.Op_Less_Equal);
    Op_Lt    : constant Cursor := Add (B.Op_Less);
    Op_Gt    : constant Cursor := Add (B.Op_Greater);
@@ -368,6 +369,16 @@ procedure Interp_Demo is
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Disc")));
    PO_X      : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   --  floating-point-generic-formal-type demo: the formal float type "Real_Num",
+   --  Average's two parameters, and the actual float type "Temperature".
+   Real_Num_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Real_Num")));
+   AV_A          : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   AV_B          : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   Temp_Type     : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Temperature")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -618,6 +629,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Discrete))));
+   --  a "type Name is digits <>;" generic formal floating-point type.
+   function Generic_Float_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Floating_Point))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1838,6 +1854,34 @@ procedure Interp_Demo is
            Print (Sub_Call (Color_Pos, [Ref (Green_Lit)])),
            Print (Sub_Call (Int_Pos,   [Lit (42)]))]);
 
+   --  generic
+   --     type Real_Num is digits <>;       -- a formal floating-point type
+   --  function Average (A, B : Real_Num) return Real_Num is
+   --  begin return (A + B) / 2.0; end;       -- real (floating) arithmetic
+   Average : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Average"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Float_Formal (Real_Num_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (AV_A), In_Par (AV_B)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Div,
+               Bin (Op_Plus, Ref (AV_A), Ref (AV_B)), Real_Lit ("2.0")))])));
+
+   --  type Temperature is digits 6;
+   --  function Avg_Temp is new Average (Temperature);
+   Avg_Temp : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Avg_Temp"),
+             Completion => Instance_Of (Average,
+               [Add (B.Used_Name (Definition => Temp_Type))])));
+
+   --  Put_Line (Avg_Temp (3.0, 4.0));    -- (3.0 + 4.0) / 2.0 = 3.5000
+   --  Put_Line (Avg_Temp (1.5, 2.5));    -- (1.5 + 2.5) / 2.0 = 2.0000
+   Float_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Avg_Temp, [Real_Lit ("3.0"), Real_Lit ("4.0")])),
+           Print (Sub_Call (Avg_Temp, [Real_Lit ("1.5"), Real_Lit ("2.5")]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2374,6 +2418,19 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Discrete_Formal_Program);
+
+   --  Formal floating-point types: a formal "digits <>" type, the body doing
+   --  real (floating) arithmetic; instantiated with a concrete float type.
+   New_Line;
+   Put_Line ("Executing (formal floating-point types):");
+   Put_Line ("    generic type Real_Num is digits <>;");
+   Put_Line ("    function Average (A, B : Real_Num) return Real_Num");
+   Put_Line ("       is begin return (A + B) / 2.0; end;");
+   Put_Line ("    type Temperature is digits 6; function Avg_Temp is new Average (Temperature);");
+   Put_Line ("    Put_Line (Avg_Temp (3.0, 4.0)); Put_Line (Avg_Temp (1.5, 2.5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Float_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
