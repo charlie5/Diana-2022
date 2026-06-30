@@ -104,7 +104,7 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   `'First`/`'Last`/`'Length`/`'Range` attributes and **slices** `A (L .. H)`), and the
   scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image`, the
   real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
-  two-argument `'Min`/`'Max`.
+  two-argument `'Min`/`'Max`, and `'Value` (parsing a string to a scalar).
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (over an array's elements or a record's components, with the Ada 2022 `when`
   filter), `case` (over integers or enumerations — an enumeration value carries

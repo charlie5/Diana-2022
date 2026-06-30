@@ -168,6 +168,8 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Min")));
    Max_Attr    : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Max")));
+   Value_Attr  : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Value")));
    Floor_Attr      : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Floor")));
    Ceiling_Attr    : constant Cursor :=
@@ -2754,6 +2756,15 @@ procedure Interp_Demo is
            Print (Attr_Call_N (Float_Type, Max_Attr,
                     [Real_Lit ("1.5"), Real_Lit ("2.5")]))]);               -- 2.5000
 
+   --  scalar 'Value: parse a string into a number (the prefix type selects
+   --  integer vs. real).  Put_Line (Integer'Value ("42"));   etc.
+   Value_Attr_Program : constant Cursor :=
+     Seq ([Print (Attr_Call (Int_Type,   Value_Attr, Str_Lit ("42"))),       -- 42
+           Print (Bin (Op_Plus,                                              -- 101
+                       Attr_Call (Int_Type, Value_Attr, Str_Lit ("100")),
+                       Lit (1))),
+           Print (Attr_Call (Float_Type, Value_Attr, Str_Lit ("3.5")))]);    -- 3.5000
+
    --  declare Arr    : ... := (1 => 10, 2 => 20, 3 => 30);
    --          Sparse : ... := (1 => 100, 3 => 300, others => 0);
    --  begin Put_Line (Arr (2)); Put_Line (Sparse (2)); Put_Line (Sparse (3)); end;
@@ -3646,6 +3657,16 @@ begin
    Put_Line ("Output:");
    Diana.Interpreter.Run (MinMax_Program);   -- 3, 7, 1.5000, 2.5000
 
+   --  scalar 'Value: parse a string into a number.
+   New_Line;
+   Put_Line ("Executing (the 'Value attribute):");
+   Put_Line ("    Put_Line (Integer'Value (""42""));");
+   Put_Line ("    Put_Line (Integer'Value (""100"") + 1);");
+   Put_Line ("    Put_Line (Float'Value (""3.5""));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Value_Attr_Program);   -- 42, 101, 3.5000
+
    --  Named array aggregates: "N => V" index choices, with "others => V" filling
    --  the gaps.
    New_Line;
@@ -3710,6 +3731,14 @@ begin
    exception
       when E : Diana.Interpreter.Interpretation_Error =>
          Put_Line ("    'Put_Line (null.all)'  -> " & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run                                    -- Integer'Value ("x")
+        (Seq ([Print (Attr_Call (Int_Type, Value_Attr, Str_Lit ("not a number")))]));
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Interpretation_Error =>
+         Put_Line ("    'Integer''Value (""x"")'  -> " & Ada.Exceptions.Exception_Message (E));
    end;
    begin
       Diana.Interpreter.Run                                       -- pragma Assert (1 = 2)

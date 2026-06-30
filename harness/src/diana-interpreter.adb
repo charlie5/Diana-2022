@@ -1719,6 +1719,26 @@ package body Diana.Interpreter is
                   return Real_V (Long_Long_Float'Truncation (Real_Of (Arg_Val)));
                elsif Attribute = "Rounding" then
                   return Real_V (Long_Long_Float'Rounding (Real_Of (Arg_Val)));
+               --  scalar 'Value: parse a string into a number; the target type
+               --  name (the attribute prefix) selects integer vs. real parsing.
+               elsif Attribute = "Value" then
+                  declare
+                     Text : constant String := SU.To_String (Str_Of (Arg_Val));
+                     Type_Name : constant String := Spelling_Of
+                       (Definition_Of (As_Attribute_Reference (Prefix).Prefix));
+                  begin
+                     if Type_Name = "Float" or else Type_Name = "Long_Float"
+                       or else Type_Name = "Real"
+                     then
+                        return Real_V (Long_Long_Float'Value (Text));
+                     else
+                        return Int (Long_Long_Integer'Value (Text));
+                     end if;
+                  exception
+                     when Constraint_Error =>
+                        raise Interpretation_Error with
+                          "'Value: """ & Text & """ is not a valid " & Type_Name;
+                  end;
                --  'Min / 'Max: two arguments; integer result if both integer,
                --  else real.  [Ada 2022 RM 3.5]
                elsif Attribute = "Min" or else Attribute = "Max" then
