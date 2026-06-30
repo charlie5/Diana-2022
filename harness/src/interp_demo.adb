@@ -2848,6 +2848,16 @@ procedure Interp_Demo is
            Print (Index_At (Ref (Str_Var), Lit (5))),   -- o
            Print (Slice_Of (Ref (Str_Var), 2, 4))]);    -- ell
 
+   --  'for E of S' iterates a string's characters (each a 1-char string), with
+   --  the Ada 2022 'when' filter.
+   --  S := "DIANA"; for E of S loop Put_Line (E); end loop;          -- D I A N A
+   --  for E of S when E > "C" loop Put_Line (E); end loop;           -- D I N
+   String_For_Program : constant Cursor :=
+     Seq ([Assign (Str_Var, Str_Lit ("DIANA")),
+           For_Of (E_Def, Ref (Str_Var), Seq ([Print (Ref (E_Def))])),
+           For_Of (E_Def, Ref (Str_Var), Seq ([Print (Ref (E_Def))]),
+                   Filter => Bin (Op_Gt, Ref (E_Def), Str_Lit ("C")))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3737,6 +3747,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (String_Ops_Program);   -- 5, 1, 5, H, o, ell
+
+   --  'for E of S' over a string's characters, with a 'when' filter.
+   New_Line;
+   Put_Line ("Executing (for ... of over a string's characters):");
+   Put_Line ("    S := ""DIANA"";");
+   Put_Line ("    for E of S loop Put_Line (E); end loop;");
+   Put_Line ("    for E of S when E > ""C"" loop Put_Line (E); end loop;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (String_For_Program);   -- D I A N A, then D I N
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

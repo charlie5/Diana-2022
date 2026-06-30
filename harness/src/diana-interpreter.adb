@@ -2559,10 +2559,27 @@ package body Diana.Interpreter is
                               end if;
                            end;
 
+                        elsif Iterable.Kind = String_Value then   --  over characters
+                           declare
+                              S : constant String := SU.To_String (Iterable.Text);
+                           begin
+                              if not Backward then
+                                 for I in S'Range loop
+                                    exit when Pending (Env);
+                                    Iterate (Str (SU.To_Unbounded_String (S (I .. I))));
+                                 end loop;
+                              else
+                                 for I in reverse S'Range loop
+                                    exit when Pending (Env);
+                                    Iterate (Str (SU.To_Unbounded_String (S (I .. I))));
+                                 end loop;
+                              end if;
+                           end;
+
                         else
                            Leave (Env, Scope);
                            raise Interpretation_Error with
-                             "'for ... of' requires an array or record value";
+                             "'for ... of' requires an array, record, or string value";
                         end if;
                         Leave (Env, Scope);
                      end;

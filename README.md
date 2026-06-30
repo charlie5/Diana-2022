@@ -108,8 +108,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
   two-argument `'Min`/`'Max`, and `'Value` (parsing a string to a scalar).
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
-  (over an array's elements or a record's components, with the Ada 2022 `when`
-  filter), `case` (over integers or enumerations — an enumeration value carries
+  (over an array's elements, a record's components, or a string's characters,
+  with the Ada 2022 `when` filter), `case` (over integers or enumerations — an enumeration value carries
   its position *and* name, so it compares/iterates as an integer but prints by
   name), **conditional expressions** (`if`- and `case`-expressions),
   **membership tests** (`X in 1 | 3 | 5`, `X in 10 .. 20`, `X not in ...`),
