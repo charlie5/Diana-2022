@@ -128,8 +128,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   **incomplete** types (`type T;`, no operations, values only pass through), and
   formal **limited private** types (no `:=`/`=`, only supplied operations), and
   formal **tagged private** types (primitive operations supplied as formal
-  subprograms), and formal **abstract tagged private** types (an abstract
-  primitive overridden concretely at instantiation) — and
+  subprograms), formal **abstract tagged private** types (an abstract
+  primitive overridden concretely at instantiation), and formal **synchronized
+  private** types (a protected/task type, unmodelled and so erased) — and
   formal **packages** bound to an actual instance, so `P.Member` resolves through
   it; with **defaults** for omitted object/subprogram formals and **`in out`**
   formal objects that alias an actual variable) — and generic packages:

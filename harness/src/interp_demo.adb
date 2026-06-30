@@ -454,6 +454,17 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
    DB_B      : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   --  synchronized-private-generic-formal-type demo: the formal synchronized
+   --  private type "Monitor", its accessor "Reading" (+ parameter), and
+   --  Snapshot's parameter (instantiated with a concrete Reading).
+   Monitor_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Monitor")));
+   Reading_Sub  : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Reading")));
+   Reading_M    : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("M")));
+   SN_M         : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("M")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -750,6 +761,11 @@ procedure Interp_Demo is
              (Name       => Name_Def,
               Definition => Add (B.Formal_Private_Type
                 (Is_Tagged => True, Is_Abstract => True)))));
+   --  a "type Name is synchronized private;" generic formal type.
+   function Generic_Synchronized_Private_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Private_Type (Is_Synchronized => True)))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -2199,6 +2215,36 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Concrete, [Lit (4)])),
            Print (Sub_Call (Concrete, [Lit (2)]))]);
 
+   --  generic
+   --     type Monitor is synchronized private;   -- a synchronized (protected/task) type
+   --     with function Reading (M : Monitor) return Integer;
+   --  function Snapshot (M : Monitor) return Integer is begin return Reading (M); end;
+   Snapshot : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Snapshot"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Synchronized_Private_Formal (Monitor_Type),
+                 Generic_Sub_Formal (Reading_Sub,
+                   Func_Spec ([In_Par (Reading_M)]))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (SN_M)]))),
+             Completion    => Blk ([], [Ret (Sub_Call (Reading_Sub,
+               [Ref (SN_M)]))])));
+
+   --  function Sensor is new Snapshot (Integer, Double);  -- Reading = Double
+   Sensor : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Sensor"),
+             Completion => Instance_Of (Snapshot,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Double_Def))])));
+
+   --  Put_Line (Sensor (21));  -- Reading (21) = Double (21) = 42
+   --  Put_Line (Sensor (5));   -- Reading (5)  = Double (5)  = 10
+   Synchronized_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Sensor, [Lit (21)])),
+           Print (Sub_Call (Sensor, [Lit (5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2840,6 +2886,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Abstract_Tagged_Formal_Program);
+
+   --  Formal synchronized private types: "synchronized" marks a protected/task
+   --  type (concurrency-safe access); not modelled at runtime, so the type is
+   --  erased and its accessor is supplied as a formal subprogram.
+   New_Line;
+   Put_Line ("Executing (formal synchronized private types):");
+   Put_Line ("    generic type Monitor is synchronized private;");
+   Put_Line ("            with function Reading (M : Monitor) return Integer;");
+   Put_Line ("    function Snapshot (M : Monitor) return Integer");
+   Put_Line ("       is begin return Reading (M); end;");
+   Put_Line ("    function Sensor is new Snapshot (Integer, Double);");
+   Put_Line ("    Put_Line (Sensor (21)); Put_Line (Sensor (5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Synchronized_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
