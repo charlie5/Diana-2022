@@ -413,6 +413,12 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
    Fn_Type     : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Fn")));
+   --  incomplete-generic-formal-type demo: the formal incomplete type "Item"
+   --  and Echo's parameter (a value of an incomplete type can only pass through).
+   Item_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Item")));
+   EC_X      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -688,6 +694,11 @@ procedure Interp_Demo is
      (Add (B.Attribute_Reference
              (Prefix    => Add (B.Used_Name (Definition => Sub_Def)),
               Attribute => Add (B.Used_Name (Definition => Access_Attr)))));
+   --  a "type Name;" generic formal incomplete type.
+   function Generic_Incomplete_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Incomplete_Type))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -2005,6 +2016,38 @@ procedure Interp_Demo is
    Access_Sub_Formal_Program : constant Cursor :=
      Seq ([Print (Sub_Call (Twice_Double, [Access_Of (Double_Def), Lit (5)]))]);
 
+   --  generic
+   --     type Item;                       -- a formal incomplete type
+   --  function Echo (X : Item) return Item is begin return X; end;
+   --  (an incomplete type supports no operations, so the body just passes X on)
+   Echo : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Echo"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Incomplete_Formal (Item_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (EC_X)]))),
+             Completion    => Blk ([], [Ret (Ref (EC_X))])));
+
+   --  function Int_Echo is new Echo (Integer);
+   --  function Str_Echo is new Echo (String);
+   Int_Echo : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Int_Echo"),
+             Completion => Instance_Of (Echo,
+               [Add (B.Used_Name (Definition => Integer_Type))])));
+   Str_Echo : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Str_Echo"),
+             Completion => Instance_Of (Echo,
+               [Add (B.Used_Name (Definition => String_Type))])));
+
+   --  Put_Line (Int_Echo (42));        -- 42
+   --  Put_Line (Str_Echo ("hi"));      -- hi
+   Incomplete_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Int_Echo, [Lit (42)])),
+           Print (Sub_Call (Str_Echo, [Str_Lit ("hi")]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2587,6 +2630,19 @@ begin
    Complete (Double_Def, Func_Spec ([In_Par (Double_N)]),
              Blk ([], [Ret (Bin (Op_Mul, Ref (Double_N), Lit (2)))]));
    Diana.Interpreter.Run (Access_Sub_Formal_Program);
+
+   --  Formal incomplete types: an incomplete type supports no operations, so the
+   --  body can only pass values of it through; one body runs over two actual types.
+   New_Line;
+   Put_Line ("Executing (formal incomplete types):");
+   Put_Line ("    generic type Item;");
+   Put_Line ("    function Echo (X : Item) return Item is begin return X; end;");
+   Put_Line ("    function Int_Echo is new Echo (Integer);");
+   Put_Line ("    function Str_Echo is new Echo (String);");
+   Put_Line ("    Put_Line (Int_Echo (42)); Put_Line (Str_Echo (""hi""));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Incomplete_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
