@@ -352,6 +352,16 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
    Row_Type : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Row")));
+   --  modular-generic-formal-type demo: the formal modular type "Clock",
+   --  Tick_By's two parameters, and the actual modular type "Hours".
+   Clock_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Clock")));
+   TB_T       : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("T")));
+   TB_N       : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
+   Hours_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Hours")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -592,6 +602,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Array_Type))));
+   --  a "type Name is mod <>;" generic formal modular type.
+   function Generic_Modular_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Modular))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1751,6 +1766,34 @@ procedure Interp_Demo is
            Print (Sub_Call (Edges,
              [Arr ([Lit (5), Lit (7), Lit (9), Lit (11)])]))]);
 
+   --  generic
+   --     type Clock is mod <>;            -- a formal modular type (here mod 12)
+   --  function Tick_By (T, N : Clock) return Clock is
+   --  begin return (T + N) mod 12; end;    -- modular (wrap-around) arithmetic
+   Tick_By : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Tick_By"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Modular_Formal (Clock_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (TB_T), In_Par (TB_N)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Mod,
+               Bin (Op_Plus, Ref (TB_T), Ref (TB_N)), Lit (12)))])));
+
+   --  type Hours is mod 12;
+   --  function Add_Hours is new Tick_By (Hours);
+   Add_Hours : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Add_Hours"),
+             Completion => Instance_Of (Tick_By,
+               [Add (B.Used_Name (Definition => Hours_Type))])));
+
+   --  Put_Line (Add_Hours (9, 7));  -- (9 + 7) mod 12 = 4   (wraps around)
+   --  Put_Line (Add_Hours (3, 4));  -- (3 + 4) mod 12 = 7
+   Modular_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Add_Hours, [Lit (9), Lit (7)])),
+           Print (Sub_Call (Add_Hours, [Lit (3), Lit (4)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2259,6 +2302,19 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Array_Formal_Program);
+
+   --  Formal modular types: a formal "mod <>" type, the body doing modular
+   --  (wrap-around) arithmetic; instantiated with a concrete modular type.
+   New_Line;
+   Put_Line ("Executing (formal modular types):");
+   Put_Line ("    generic type Clock is mod <>;");
+   Put_Line ("    function Tick_By (T, N : Clock) return Clock");
+   Put_Line ("       is begin return (T + N) mod 12; end;");
+   Put_Line ("    type Hours is mod 12; function Add_Hours is new Tick_By (Hours);");
+   Put_Line ("    Put_Line (Add_Hours (9, 7)); Put_Line (Add_Hours (3, 4));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Modular_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

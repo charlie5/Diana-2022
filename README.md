@@ -117,8 +117,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   actual type, e.g. `Are_Equal` instantiated for `Integer` and `String`, including
   formal **interface** types (programmed to via their operations), formal
   **derived** types (whose inherited parent operations the body uses directly), and
-  formal **scalar** types (`range <>`, ordered, so the body compares them),
-  formal **access** types (the body dereferences with `.all`), and formal
+  formal **scalar** types (`range <>`, ordered, so the body compares them;
+  `mod <>`, with modular arithmetic), formal **access** types (the body
+  dereferences with `.all`), and formal
   **array** types (the body indexes and uses `'First`/`'Last`) — and
   formal **packages** bound to an actual instance, so `P.Member` resolves through
   it; with **defaults** for omitted object/subprogram formals and **`in out`**
