@@ -465,6 +465,17 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("M")));
    SN_M         : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("M")));
+   --  abstract-limited-private-generic-formal-type demo: the formal abstract
+   --  limited private type "Stream", its abstract primitive "Get" (+ parameter),
+   --  and Twice_Get's parameter (instantiated with a concrete overriding of Get).
+   Stream_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Stream")));
+   Get_Sub     : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Get")));
+   Get_S       : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
+   TG_S        : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("S")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -766,6 +777,14 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Private_Type (Is_Synchronized => True)))));
+   --  a "type Name is abstract limited private;" generic formal type (combining
+   --  both restrictions: no :=/= and an abstract primitive to override).
+   function Generic_Abstract_Limited_Private_Formal (Name_Def : Cursor)
+     return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Private_Type
+                (Is_Abstract => True, Is_Limited => True)))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -2245,6 +2264,38 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Sensor, [Lit (21)])),
            Print (Sub_Call (Sensor, [Lit (5)]))]);
 
+   --  generic
+   --     type Stream is abstract limited private;  -- no :=/=, abstract primitive
+   --     with function Get (S : Stream) return Integer;   -- abstract, must override
+   --  function Twice_Get (S : Stream) return Integer is
+   --  begin return Get (S) + Get (S); end;
+   Twice_Get : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Twice_Get"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Abstract_Limited_Private_Formal (Stream_Type),
+                 Generic_Sub_Formal (Get_Sub, Func_Spec ([In_Par (Get_S)]))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (TG_S)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus,
+               Sub_Call (Get_Sub, [Ref (TG_S)]),
+               Sub_Call (Get_Sub, [Ref (TG_S)])))])));
+
+   --  a concrete descendant overrides Get with Square_Area (S * S)
+   --  function File_Stream is new Twice_Get (Integer, Square_Area);
+   File_Stream : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("File_Stream"),
+             Completion => Instance_Of (Twice_Get,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Square_Area_Def))])));
+
+   --  Put_Line (File_Stream (5));  -- Square_Area (5) + Square_Area (5) = 50
+   --  Put_Line (File_Stream (3));  -- Square_Area (3) + Square_Area (3) = 18
+   Abstract_Limited_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (File_Stream, [Lit (5)])),
+           Print (Sub_Call (File_Stream, [Lit (3)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2901,6 +2952,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Synchronized_Formal_Program);
+
+   --  Formal abstract limited private types: combining both restrictions — no
+   --  ":=" / "=" (limited) and an abstract primitive that must be overridden
+   --  (abstract); the primitive is supplied concretely at instantiation.
+   New_Line;
+   Put_Line ("Executing (formal abstract limited private types):");
+   Put_Line ("    generic type Stream is abstract limited private;");
+   Put_Line ("            with function Get (S : Stream) return Integer;");
+   Put_Line ("    function Twice_Get (S : Stream) return Integer");
+   Put_Line ("       is begin return Get (S) + Get (S); end;");
+   Put_Line ("    function File_Stream is new Twice_Get (Integer, Square_Area);");
+   Put_Line ("    Put_Line (File_Stream (5)); Put_Line (File_Stream (3));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Abstract_Limited_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

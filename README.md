@@ -130,7 +130,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   formal **tagged private** types (primitive operations supplied as formal
   subprograms), formal **abstract tagged private** types (an abstract
   primitive overridden concretely at instantiation), and formal **synchronized
-  private** types (a protected/task type, unmodelled and so erased) — and
+  private** types (a protected/task type, unmodelled and so erased), and formal
+  **abstract limited private** types (both restrictions combined) — and
   formal **packages** bound to an actual instance, so `P.Member` resolves through
   it; with **defaults** for omitted object/subprogram formals and **`in out`**
   formal objects that alias an actual variable) — and generic packages:
