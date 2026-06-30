@@ -511,6 +511,9 @@ package body Diana.Interpreter is
    function Choice_Matches (Choices : Cursor; Selector : Long_Long_Integer;
                             Env : in out Environment; Current : Positive)
      return Boolean;
+   --  Evaluate a discrete range "Low .. High" (forward-declared for membership).
+   procedure Eval_Range (Discrete_Range : Cursor; Env : in out Environment;
+                         Current : Positive; Low, High : out Long_Long_Integer);
    procedure Elaborate (Decls : Node_List; Env : in out Environment;
                         Scope_Index : Positive);
    procedure Instantiate_Package (Name, Completion : Cursor;
@@ -1658,6 +1661,35 @@ package body Diana.Interpreter is
                return Evaluate (Others_Result, Env, Current);
             end if;
             raise Interpretation_Error with "no alternative of the case-expression applies";
+         end;
+
+      elsif Is_Membership (Expr) then              --  X in C1 | C2 .. C3 | ...
+         declare
+            V : constant Long_Long_Integer :=
+              Whole_Of (Evaluate (As_Membership (Expr).Operand, Env, Current));
+            In_Set : Boolean := False;
+            Low, High : Long_Long_Integer;
+         begin
+            for C of As_Membership_Choice_S (As_Membership (Expr).Choices).List loop
+               if Is_Membership_Value (C) then
+                  if V = Whole_Of (Evaluate
+                       (As_Membership_Value (C).Value, Env, Current))
+                  then
+                     In_Set := True;
+                  end if;
+               elsif Is_Membership_Range (C) then
+                  Eval_Range (As_Membership_Range (C).Range_Item, Env, Current,
+                              Low, High);
+                  if V >= Low and then V <= High then
+                     In_Set := True;
+                  end if;
+               end if;
+               exit when In_Set;
+            end loop;
+            if Is_Not_In_Set (As_Membership (Expr).Operator) then
+               In_Set := not In_Set;     --  "not in"
+            end if;
+            return Bool (In_Set);
          end;
 
       else

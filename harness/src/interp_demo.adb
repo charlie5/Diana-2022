@@ -892,6 +892,24 @@ procedure Interp_Demo is
              (Selector     => Selector,
               Alternatives => Add (B.Expression_Alternative_S
                 (List => NL (Alternatives))))));
+
+   --  membership tests: "Operand in C1 | C2 .. C3 | ..." (and "not in"), with
+   --  value choices and range choices.
+   function Mem_Val (V : Integer) return Cursor is
+     (Add (B.Membership_Value (Value => Lit (V))));
+   function Mem_Range (Lo, Hi : Integer) return Cursor is
+     (Add (B.Membership_Range (Range_Item => Add (B.Range_Bounds
+        (Lower => Lit (Lo), Upper => Lit (Hi))))));
+   function In_Test (Operand : Cursor; Choices : Cursor_Array) return Cursor is
+     (Add (B.Membership (Operand  => Operand,
+                         Operator => Add (B.In_Set),
+                         Choices  => Add (B.Membership_Choice_S
+                           (List => NL (Choices))))));
+   function Not_In_Test (Operand : Cursor; Choices : Cursor_Array) return Cursor is
+     (Add (B.Membership (Operand  => Operand,
+                         Operator => Add (B.Not_In_Set),
+                         Choices  => Add (B.Membership_Choice_S
+                           (List => NL (Choices))))));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2535,6 +2553,14 @@ procedure Interp_Demo is
               Case_Alt_Expr ([Val_Choice (2)], Lit (20)),
               Case_Alt_Expr ([Others_Ch], Lit (0))]))]);
 
+   --  Put_Line (3 in 1 | 3 | 5);    -- True       Put_Line (4 in 1 | 3 | 5);  -- False
+   --  Put_Line (15 in 10 .. 20);    -- True       Put_Line (7 not in 1 .. 5); -- True
+   Membership_Program : constant Cursor :=
+     Seq ([Print (In_Test (Lit (3), [Mem_Val (1), Mem_Val (3), Mem_Val (5)])),
+           Print (In_Test (Lit (4), [Mem_Val (1), Mem_Val (3), Mem_Val (5)])),
+           Print (In_Test (Lit (15), [Mem_Range (10, 20)])),
+           Print (Not_In_Test (Lit (7), [Mem_Range (1, 5)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3280,6 +3306,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Cond_Expr_Program);   -- 7, 5, 20, 0
+
+   --  Membership tests: "X in C1 | C2 .. C3 | ..." and "X not in ...", over value
+   --  choices and range choices.
+   New_Line;
+   Put_Line ("Executing (membership tests):");
+   Put_Line ("    Put_Line (3 in 1 | 3 | 5);  Put_Line (4 in 1 | 3 | 5);");
+   Put_Line ("    Put_Line (15 in 10 .. 20);  Put_Line (7 not in 1 .. 5);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Membership_Program);   -- True, False, True, True
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
