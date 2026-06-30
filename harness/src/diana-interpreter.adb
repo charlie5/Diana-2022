@@ -1566,18 +1566,27 @@ package body Diana.Interpreter is
             declare
                Attribute : constant String := Spelling_Of
                  (Definition_Of (As_Attribute_Reference (Prefix).Attribute));
-               Arg : constant Long_Long_Integer :=
-                 Whole_Of (Evaluate (As_Attribute_Call (Expr).Argument, Env, Current));
+               Arg_Val : constant Static_Value :=
+                 Evaluate (As_Attribute_Call (Expr).Argument, Env, Current);
             begin
+               --  'Image renders any value to its string form (the interpreter's
+               --  Image — note: no Ada-style leading space for non-negatives).
+               if Attribute = "Image" then
+                  return Str (SU.To_Unbounded_String (Image (Arg_Val)));
+               end if;
                --  discrete attributes: enumeration values are their position, so
                --  Succ / Pred are +/-1 and Pos / Val are the identity.
-               if    Attribute = "Succ" then return Int (Arg + 1);
-               elsif Attribute = "Pred" then return Int (Arg - 1);
-               elsif Attribute = "Pos"  then return Int (Arg);
-               elsif Attribute = "Val"  then return Int (Arg);
-               else
-                  raise Interpretation_Error with "unsupported attribute: " & Attribute;
-               end if;
+               declare
+                  Arg : constant Long_Long_Integer := Whole_Of (Arg_Val);
+               begin
+                  if    Attribute = "Succ" then return Int (Arg + 1);
+                  elsif Attribute = "Pred" then return Int (Arg - 1);
+                  elsif Attribute = "Pos"  then return Int (Arg);
+                  elsif Attribute = "Val"  then return Int (Arg);
+                  else
+                     raise Interpretation_Error with "unsupported attribute: " & Attribute;
+                  end if;
+               end;
             end;
          end;
 

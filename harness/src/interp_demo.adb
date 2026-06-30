@@ -160,6 +160,8 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Old")));
    Access_Attr : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Access")));
+   Image_Attr  : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Image")));
    My_Error    : constant Cursor :=
      Add (B.Exception_Name (Spelling => SU.To_Unbounded_String ("My_Error")));
    ExcMsg_Name : constant Cursor :=
@@ -2611,6 +2613,15 @@ procedure Interp_Demo is
          Print (Index_At (Slice_Of (Ref (SL_Arr), 2, 4), Lit (1))),
          Print (Index_At (Slice_Of (Ref (SL_Arr), 2, 4), Lit (3)))]);
 
+   --  Put_Line (Integer'Image (42));                       -- 42
+   --  Put_Line ("answer = " & Integer'Image (7));          -- answer = 7
+   --  Put_Line (Color'Image (Blue));                       -- Blue  (enum by name)
+   Image_Program : constant Cursor :=
+     Seq ([Print (Attr_Call (Integer_Type, Image_Attr, Lit (42))),
+           Print (Bin (Op_Cat, Str_Lit ("answer = "),
+                       Attr_Call (Integer_Type, Image_Attr, Lit (7)))),
+           Print (Attr_Call (Color_Type, Image_Attr, Ref (Blue_Lit)))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3386,6 +3397,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Slice_Program);   -- 3, 20, 40
+
+   --  The 'Image attribute: render a value to its string form (an enumeration
+   --  by name).
+   New_Line;
+   Put_Line ("Executing ('Image attribute):");
+   Put_Line ("    Put_Line (Integer'Image (42));  Put_Line (""answer = "" & Integer'Image (7));");
+   Put_Line ("    Put_Line (Color'Image (Blue));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Image_Program);   -- 42, answer = 7, Blue
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
