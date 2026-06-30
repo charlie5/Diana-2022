@@ -362,6 +362,12 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("N")));
    Hours_Type : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Hours")));
+   --  discrete-generic-formal-type demo: the formal discrete type "Disc" and
+   --  Pos_Of's parameter (instantiated with the enumeration Color and Integer).
+   Disc_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Disc")));
+   PO_X      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -607,6 +613,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Modular))));
+   --  a "type Name is (<>);" generic formal discrete type (enum or integer).
+   function Generic_Discrete_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Discrete))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1794,6 +1805,39 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Add_Hours, [Lit (9), Lit (7)])),
            Print (Sub_Call (Add_Hours, [Lit (3), Lit (4)]))]);
 
+   --  generic
+   --     type Disc is (<>);             -- a formal discrete type (enum OR integer)
+   --  function Pos_Of (X : Disc) return Integer is begin return Disc'Pos (X); end;
+   Pos_Of : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Pos_Of"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Discrete_Formal (Disc_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (PO_X)]))),
+             Completion    => Blk ([], [Ret (Attr_Call (Disc_Type, Pos_Attr,
+                                                        Ref (PO_X)))])));
+
+   --  function Color_Pos is new Pos_Of (Color);    -- over an enumeration
+   --  function Int_Pos   is new Pos_Of (Integer);  -- over an integer type
+   Color_Pos : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Color_Pos"),
+             Completion => Instance_Of (Pos_Of,
+               [Add (B.Used_Name (Definition => Color_Type))])));
+   Int_Pos : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Int_Pos"),
+             Completion => Instance_Of (Pos_Of,
+               [Add (B.Used_Name (Definition => Integer_Type))])));
+
+   --  Put_Line (Color_Pos (Blue));   -- 2     Put_Line (Color_Pos (Green));  -- 1
+   --  Put_Line (Int_Pos (42));       -- 42
+   Discrete_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Color_Pos, [Ref (Blue_Lit)])),
+           Print (Sub_Call (Color_Pos, [Ref (Green_Lit)])),
+           Print (Sub_Call (Int_Pos,   [Lit (42)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2315,6 +2359,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Modular_Formal_Program);
+
+   --  Formal discrete types: a formal "(<>)" type accepts an enumeration OR an
+   --  integer type and supports the discrete attribute 'Pos; one body runs over
+   --  both an enumeration (Color) and an integer type.
+   New_Line;
+   Put_Line ("Executing (formal discrete types):");
+   Put_Line ("    generic type Disc is (<>);");
+   Put_Line ("    function Pos_Of (X : Disc) return Integer");
+   Put_Line ("       is begin return Disc'Pos (X); end;");
+   Put_Line ("    function Color_Pos is new Pos_Of (Color);  -- enumeration");
+   Put_Line ("    function Int_Pos   is new Pos_Of (Integer);");
+   Put_Line ("    Put_Line (Color_Pos (Blue)); Put_Line (Color_Pos (Green)); Put_Line (Int_Pos (42));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Discrete_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

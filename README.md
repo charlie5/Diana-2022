@@ -118,7 +118,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   formal **interface** types (programmed to via their operations), formal
   **derived** types (whose inherited parent operations the body uses directly), and
   formal **scalar** types (`range <>`, ordered, so the body compares them;
-  `mod <>`, with modular arithmetic), formal **access** types (the body
+  `mod <>`, with modular arithmetic; `(<>)`, discrete, accepting enumerations
+  and using `'Pos`), formal **access** types (the body
   dereferences with `.all`), and formal
   **array** types (the body indexes and uses `'First`/`'Last`) — and
   formal **packages** bound to an actual instance, so `P.Member` resolves through
