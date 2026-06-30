@@ -130,7 +130,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   conversions** (`Integer (R)` / `Float (I)`) and **qualified expressions**
   (`T'(X)`), block
   statements and **declare expressions** (`(declare X := 5; begin X * X)`) with
-  local declarations, `exit` (incl. named), `goto` + labels, `delay` (a no-op in the
+  local declarations (variables, constants, and named numbers
+  `N : constant := V`), `exit` (incl. named), `goto` + labels, `delay` (a no-op in the
   sequential model), `raise` + exception
   handlers (incl. `when E : ...` occurrence parameters, bare re-raise, and
   `Exception_Name`/`Exception_Message`), `Put_Line`.

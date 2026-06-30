@@ -597,6 +597,12 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("TNX")));
    TN_A         : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("TNA")));
+
+   --  named-number demo occurrences.
+   Num_Pi       : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Pi_N")));
+   Num_Max      : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Max_N")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -702,6 +708,12 @@ procedure Interp_Demo is
      (Add (B.Variable_Declaration
              (Names          => Add (B.Defining_Name_S (List => NL ([Definition]))),
               Initialization => Init)));
+
+   --  a named number "Definition : constant := Value;" (no explicit type).
+   function Num_Decl (Definition, Value : Cursor) return Cursor is
+     (Add (B.Number_Declaration
+             (Names                   => Add (B.Defining_Name_S (List => NL ([Definition]))),
+              Static_Value_Expression => Value)));
 
    --  "declare <Decls> begin <Stmts> end;" block statement.
    function Block_Stmt (Decls, Stmts : Cursor_Array) return Cursor is
@@ -3051,6 +3063,16 @@ procedure Interp_Demo is
            Print (Arr ([Arr ([Lit (1), Lit (2)]),
                         Arr ([Lit (3), Lit (4)])]))]);
 
+   --  Named numbers "N : constant := <value>;" (no explicit type).
+   --  declare Pi_N : constant := 3.14; Max_N : constant := 100;
+   --  begin Put_Line (Pi_N); Put_Line (Max_N * 2); end;             -- 3.1400, 200
+   Number_Decl_Program : constant Cursor :=
+     Block_Stmt
+       ([Num_Decl (Num_Pi,  Real_Lit ("3.14")),
+         Num_Decl (Num_Max, Lit (100))],
+        [Print (Ref (Num_Pi)),                              -- 3.1400
+         Print (Bin (Op_Mul, Ref (Num_Max), Lit (2)))]);    -- 200
+
    --  Composite equality: arrays and records compare element-/component-wise.
    --  (1,2,3) = (1,2,3) -> True;  (1,2,3) = (1,9,3) -> False;
    --  (1,2) /= (1,2,3) -> True (lengths differ);  records likewise.
@@ -4080,6 +4102,15 @@ begin
    Put_Line ("Output:");
    Diana.Interpreter.Run (Composite_Image_Program);
    --  (1, 2, 3) / (X => 1, Y => 2) / ((1, 2), (3, 4))
+
+   --  Named numbers: "N : constant := <value>;" with no explicit type.
+   New_Line;
+   Put_Line ("Executing (named numbers):");
+   Put_Line ("    Pi_N : constant := 3.14;  Max_N : constant := 100;");
+   Put_Line ("    Put_Line (Pi_N); Put_Line (Max_N * 2);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Number_Decl_Program);   -- 3.1400, 200
 
    --  Composite equality: arrays and records compared element-/component-wise.
    New_Line;

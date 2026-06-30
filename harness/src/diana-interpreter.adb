@@ -646,6 +646,11 @@ package body Diana.Interpreter is
             Declare_Objects (As_Constant_Declaration (D).Names,
                              As_Constant_Declaration (D).Object_Subtype,
                              As_Constant_Declaration (D).Initialization);
+         elsif Is_Number_Declaration (D) then
+            --  a named number "N : constant := <value>;" (no explicit subtype)
+            Declare_Objects (As_Number_Declaration (D).Names,
+                             No_Element,
+                             As_Number_Declaration (D).Static_Value_Expression);
          elsif Is_Subtype_Declaration (D) then
             Register_Predicates (Env, Spelling_Of (As_Subtype_Declaration (D).Name),
                                  As_Subtype_Declaration (D).Properties);
