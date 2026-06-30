@@ -95,7 +95,8 @@ hoisted to the highest applicable class.
 them through `Diana.Interpreter`. Between them the interpreter covers:
 
 - **Values:** integer, real (with promotion), boolean, character literals
-  (`'A'`, as one-character strings), string (a 1-based
+  (`'A'`, as one-character strings, with `Character'Pos`/`'Val`/`'Succ`/`'Pred`),
+  string (a 1-based
   character array: `S'Length`/`'First`/`'Last`/`'Range`, indexing `S (I)`,
   slicing `S (L .. H)`), access
   (`new`, `.all`, `null`, aliasing), `&` concatenation over strings **and

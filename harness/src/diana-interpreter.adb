@@ -1918,45 +1918,93 @@ package body Diana.Interpreter is
                      end if;
                   end;
                end if;
-               --  discrete attributes.  For an enumeration type (recorded in
-               --  Enum_Types), 'Val / 'Succ / 'Pred yield the named value at the
-               --  resulting position; otherwise the position is the value itself.
+               --  discrete attributes.  Character is a one-character-string type
+               --  here; an enumeration type (recorded in Enum_Types) yields named
+               --  values; otherwise a position is the value itself.
                declare
-                  Arg       : constant Long_Long_Integer := Whole_Of (Arg_Val);
                   Type_Name : constant String := Spelling_Of
                     (Definition_Of (As_Attribute_Reference (Prefix).Prefix));
-
-                  --  the value at position Pos of the prefix type: a named
-                  --  enumeration literal, or the bare integer for a non-enum type.
-                  function At_Position (Pos : Long_Long_Integer) return Static_Value is
-                  begin
-                     if not Env.Enum_Types.Contains (Type_Name) then
-                        return Int (Pos);
-                     end if;
-                     declare
-                        Literals : constant Name_Vectors.Vector :=
-                          Env.Enum_Types.Element (Type_Name);
-                     begin
-                        if Pos < 0 or else Pos >= Long_Long_Integer (Literals.Length)
-                        then
-                           raise Interpretation_Error with
-                             "'" & Attribute & ": position" & Pos'Image
-                             & " is out of range for " & Type_Name;
-                        end if;
-                        return (Kind     => Enum_Value,
-                                Pos      => Pos,
-                                Lit_Name => SU.To_Unbounded_String
-                                              (Literals (Positive (Pos + 1))));
-                     end;
-                  end At_Position;
                begin
-                  if    Attribute = "Succ" then return At_Position (Arg + 1);
-                  elsif Attribute = "Pred" then return At_Position (Arg - 1);
-                  elsif Attribute = "Pos"  then return Int (Arg);
-                  elsif Attribute = "Val"  then return At_Position (Arg);
-                  else
-                     raise Interpretation_Error with "unsupported attribute: " & Attribute;
+                  --  Character'Pos -> code, 'Val -> char, 'Succ / 'Pred ->
+                  --  neighbouring character (over one-character strings).
+                  if Type_Name = "Character"
+                    and then (Attribute = "Pos" or else Attribute = "Val"
+                              or else Attribute = "Succ" or else Attribute = "Pred")
+                  then
+                     if Attribute = "Val" then
+                        declare
+                           Code : constant Long_Long_Integer := Whole_Of (Arg_Val);
+                        begin
+                           if Code < 0 or else Code > 255 then
+                              raise Interpretation_Error with
+                                "Character'Val: code" & Code'Image & " is out of range";
+                           end if;
+                           return Str (SU.To_Unbounded_String
+                             ("" & Character'Val (Integer (Code))));
+                        end;
+                     else
+                        declare
+                           S : constant String := SU.To_String (Str_Of (Arg_Val));
+                        begin
+                           if S'Length /= 1 then
+                              raise Interpretation_Error with
+                                "Character'" & Attribute & " requires a single character";
+                           end if;
+                           declare
+                              Code   : constant Integer := Character'Pos (S (S'First));
+                              Result : Integer;
+                           begin
+                              if Attribute = "Pos" then
+                                 return Int (Long_Long_Integer (Code));
+                              end if;
+                              Result := (if Attribute = "Succ" then Code + 1 else Code - 1);
+                              if Result < 0 or else Result > 255 then
+                                 raise Interpretation_Error with
+                                   "Character'" & Attribute & " is out of range";
+                              end if;
+                              return Str (SU.To_Unbounded_String
+                                ("" & Character'Val (Result)));
+                           end;
+                        end;
+                     end if;
                   end if;
+
+                  --  enumeration / integer discrete attributes
+                  declare
+                     Arg : constant Long_Long_Integer := Whole_Of (Arg_Val);
+
+                     --  the value at position Pos of the prefix type: a named
+                     --  enumeration literal, or the bare integer for a non-enum type.
+                     function At_Position (Pos : Long_Long_Integer) return Static_Value is
+                     begin
+                        if not Env.Enum_Types.Contains (Type_Name) then
+                           return Int (Pos);
+                        end if;
+                        declare
+                           Literals : constant Name_Vectors.Vector :=
+                             Env.Enum_Types.Element (Type_Name);
+                        begin
+                           if Pos < 0 or else Pos >= Long_Long_Integer (Literals.Length)
+                           then
+                              raise Interpretation_Error with
+                                "'" & Attribute & ": position" & Pos'Image
+                                & " is out of range for " & Type_Name;
+                           end if;
+                           return (Kind     => Enum_Value,
+                                   Pos      => Pos,
+                                   Lit_Name => SU.To_Unbounded_String
+                                                 (Literals (Positive (Pos + 1))));
+                        end;
+                     end At_Position;
+                  begin
+                     if    Attribute = "Succ" then return At_Position (Arg + 1);
+                     elsif Attribute = "Pred" then return At_Position (Arg - 1);
+                     elsif Attribute = "Pos"  then return Int (Arg);
+                     elsif Attribute = "Val"  then return At_Position (Arg);
+                     else
+                        raise Interpretation_Error with "unsupported attribute: " & Attribute;
+                     end if;
+                  end;
                end;
             end;
          end;

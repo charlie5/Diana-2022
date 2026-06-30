@@ -191,6 +191,8 @@ procedure Interp_Demo is
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Color")));
    Int_Type   : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Integer")));
+   Char_Type  : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Character")));
    Red_Lit    : constant Cursor :=
      Add (B.Enumeration_Literal_Name (Spelling => SU.To_Unbounded_String ("Red"),
                                       Position => 0));
@@ -2968,6 +2970,16 @@ procedure Interp_Demo is
            Print (Bin (Op_Cat, Char_Lit ('H'), Char_Lit ('i'))),  -- Hi
            Print (Bin (Op_Eq, Char_Lit ('X'), Str_Lit ("X")))]);  -- True
 
+   --  Character attributes over one-character strings: 'Pos -> code, 'Val ->
+   --  char, 'Succ / 'Pred -> the neighbouring character.
+   --  Character'Pos ('A') = 65; Character'Val (66) = 'B';
+   --  Character'Succ ('A') = 'B'; Character'Pred ('B') = 'A'.
+   Char_Attr_Program : constant Cursor :=
+     Seq ([Print (Attr_Call (Char_Type, Pos_Attr,  Char_Lit ('A'))),   -- 65
+           Print (Attr_Call (Char_Type, Val_Attr,  Lit (66))),         -- B
+           Print (Attr_Call (Char_Type, Succ_Attr, Char_Lit ('A'))),   -- B
+           Print (Attr_Call (Char_Type, Pred_Attr, Char_Lit ('B')))]); -- A
+
    --  Composite equality: arrays and records compare element-/component-wise.
    --  (1,2,3) = (1,2,3) -> True;  (1,2,3) = (1,9,3) -> False;
    --  (1,2) /= (1,2,3) -> True (lengths differ);  records likewise.
@@ -3951,6 +3963,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Char_Lit_Program);   -- A, Hi, True
+
+   --  Character attributes: 'Pos / 'Val / 'Succ / 'Pred over one-char strings.
+   New_Line;
+   Put_Line ("Executing (Character attributes 'Pos / 'Val / 'Succ / 'Pred):");
+   Put_Line ("    Put_Line (Character'Pos ('A')); Put_Line (Character'Val (66));");
+   Put_Line ("    Put_Line (Character'Succ ('A')); Put_Line (Character'Pred ('B'));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Char_Attr_Program);   -- 65, B, B, A
 
    --  Composite equality: arrays and records compared element-/component-wise.
    New_Line;
