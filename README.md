@@ -148,7 +148,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   body runs to completion at activation; a protected **entry** runs only when its
   barrier (over the protected state) is open, else it errors (a closed barrier
   would block forever single-threaded); and a task **entry call** (`T.E (Args)`)
-  rendezvouses with the task's `accept E` body, run synchronously with the call.
+  rendezvouses with the task's `accept E` body, run synchronously with the call —
+  including a **selective accept** (`select accept E1; or accept E2; ... end select`)
+  whose guarded alternatives (`when C =>`) are only callable while their guard is open.
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,
   `Contract_Cases`, and `Subprogram_Variant`; plus bare re-raise and

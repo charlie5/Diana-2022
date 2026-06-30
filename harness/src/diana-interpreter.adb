@@ -128,6 +128,7 @@ package body Diana.Interpreter is
       Constrained  : Constraint_Maps.Map;            --  variable name -> its type name
       Entries      : Cursor_Maps.Map;                --  protected entry name -> Entry_Body
       Accepts      : Cursor_Maps.Map;                --  task entry name -> Accept_Statement
+      Accept_Guards : Cursor_Maps.Map;               --  guarded entry name -> guard expr
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
       Exiting      : Boolean      := False;          --  an exit is in progress
@@ -659,6 +660,30 @@ package body Diana.Interpreter is
                              (Spelling_Of (Definition_Of
                                 (As_Accept_Statement (S).Entry_Name)), S);
                            Has_Accepts := True;
+                        elsif Is_Selective_Accept (S) then
+                           --  a "select accept E1; or accept E2; ... end select":
+                           --  register each alternative's accept (and its guard,
+                           --  if any), so a call to any offered entry rendezvous.
+                           for Alt of As_Select_Alternative_S
+                                        (As_Selective_Accept (S).Alternatives).List
+                           loop
+                              if Is_Accept_Alternative (Alt) then
+                                 declare
+                                    Acc : constant Cursor :=
+                                      As_Accept_Alternative (Alt).Accept_Statement;
+                                    Grd : constant Cursor :=
+                                      As_Accept_Alternative (Alt).Guard;
+                                    Nm  : constant String := Spelling_Of
+                                      (Definition_Of (As_Accept_Statement (Acc).Entry_Name));
+                                 begin
+                                    Env.Accepts.Include (Nm, Acc);
+                                    if Grd /= No_Element and then not Is_Void (Grd) then
+                                       Env.Accept_Guards.Include (Nm, Grd);
+                                    end if;
+                                    Has_Accepts := True;
+                                 end;
+                              end if;
+                           end loop;
                         else
                            Execute (S, Env, Scope);
                         end if;
@@ -1928,6 +1953,13 @@ package body Diana.Interpreter is
                elsif not Env.Accepts.Contains (Entry_Nm) then
                   raise Interpretation_Error with
                     "task is not accepting entry: " & Entry_Nm;
+               elsif Env.Accept_Guards.Contains (Entry_Nm)
+                 and then not Bool_Of (Evaluate
+                   (Env.Accept_Guards.Element (Entry_Nm), Env, Task_Val.Instance))
+               then
+                  --  the select alternative's guard is closed (would block)
+                  raise Interpretation_Error with
+                    "select alternative guard is closed: " & Entry_Nm;
                end if;
                declare
                   Accept_Node : constant Cursor := Env.Accepts.Element (Entry_Nm);

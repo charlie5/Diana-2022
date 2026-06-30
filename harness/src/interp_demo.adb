@@ -511,6 +511,18 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    Sum_Acc   : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sum")));
+   --  selective-accept demo: a task "Switch" with state "State" offering three
+   --  entries — Turn_On (when State = 0), Turn_Off (when State = 1), Report.
+   Switch_Def   : constant Cursor :=
+     Add (B.Task_Body_Name (Spelling => SU.To_Unbounded_String ("Switch")));
+   On_Entry     : constant Cursor :=
+     Add (B.Entry_Name (Spelling => SU.To_Unbounded_String ("Turn_On")));
+   Off_Entry    : constant Cursor :=
+     Add (B.Entry_Name (Spelling => SU.To_Unbounded_String ("Turn_Off")));
+   Report_Entry : constant Cursor :=
+     Add (B.Entry_Name (Spelling => SU.To_Unbounded_String ("Report")));
+   Sw_State     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("State")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -857,6 +869,13 @@ procedure Interp_Demo is
             Selector => Add (B.Used_Name (Definition => Entry_Def)))),
          Actuals => Add (B.Association_S (List => Items))));
    end Entry_Call_Stmt;
+   --  a "[when Guard =>] accept ..." alternative (Guard = No_Element if none),
+   --  and a "select <alts> end select" selective accept.
+   function Accept_Alt (Guard, Accept_Stmt : Cursor) return Cursor is
+     (Add (B.Accept_Alternative (Guard => Guard, Accept_Statement => Accept_Stmt)));
+   function Select_Accept (Alts : Cursor_Array) return Cursor is
+     (Add (B.Selective_Accept
+             (Alternatives => Add (B.Select_Alternative_S (List => NL (Alts))))));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2448,6 +2467,42 @@ procedure Interp_Demo is
          Entry_Call_Stmt (Accum_Def, Add_Entry, [Lit (5)]),
          Entry_Call_Stmt (Accum_Def, Add_Entry, [Lit (100)])]);
 
+   --  task Switch is entry Turn_On; entry Turn_Off; entry Report; end Switch;
+   --  task body Switch is State : Integer := 0;
+   --  begin
+   --     select    when State = 0 => accept Turn_On  do State := 1; Put_Line (State); end;
+   --     or        when State = 1 => accept Turn_Off do State := 0; Put_Line (State); end;
+   --     or                          accept Report   do Put_Line (State);            end;
+   --     end select;
+   --  end Switch;
+   Switch_Task : constant Cursor :=
+     Task_Unit (Switch_Def,
+       Blk ([Var_Decl (Sw_State, Lit (0))],
+            [Select_Accept
+               ([Accept_Alt (Bin (Op_Eq, Ref (Sw_State), Lit (0)),
+                   Accept_Entry (On_Entry, [],
+                     Seq ([Assign (Sw_State, Lit (1)), Print (Ref (Sw_State))]))),
+                 Accept_Alt (Bin (Op_Eq, Ref (Sw_State), Lit (1)),
+                   Accept_Entry (Off_Entry, [],
+                     Seq ([Assign (Sw_State, Lit (0)), Print (Ref (Sw_State))]))),
+                 Accept_Alt (No_Element,
+                   Accept_Entry (Report_Entry, [],
+                     Seq ([Print (Ref (Sw_State))])))])]));
+
+   --  Switch.Turn_On; Switch.Report; Switch.Turn_Off;   -- 1, 1, 0 (guards open)
+   Select_Program : constant Cursor :=
+     Block_Stmt
+       ([Switch_Task],
+        [Entry_Call_Stmt (Switch_Def, On_Entry, []),
+         Entry_Call_Stmt (Switch_Def, Report_Entry, []),
+         Entry_Call_Stmt (Switch_Def, Off_Entry, [])]);
+
+   --  Switch.Turn_Off with State = 0 -> that alternative's guard is closed
+   Select_Closed_Program : constant Cursor :=
+     Block_Stmt
+       ([Switch_Task],
+        [Entry_Call_Stmt (Switch_Def, Off_Entry, [])]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3171,6 +3226,18 @@ begin
    Put_Line ("Output:");
    Diana.Interpreter.Run (Rendezvous_Program);   -- 10, 15, 115
 
+   --  A selective accept with multiple alternatives: the task offers several
+   --  entries in one "select"; an entry call rendezvouses with the matching
+   --  alternative (whose guard, if any, must be open).
+   New_Line;
+   Put_Line ("Executing (selective accept, multiple alternatives):");
+   Put_Line ("    task Switch offers: select when State = 0 => accept Turn_On ...");
+   Put_Line ("       or when State = 1 => accept Turn_Off ... or accept Report ...; end select;");
+   Put_Line ("    Switch.Turn_On; Switch.Report; Switch.Turn_Off;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Select_Program);   -- 1, 1, 0
+
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
    New_Line;
@@ -3275,6 +3342,14 @@ begin
    exception
       when E : Diana.Interpreter.Interpretation_Error =>
          Put_Line ("    'Gate.Pass' (Tokens = 0)  -> "
+                   & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run (Select_Closed_Program);     -- Switch.Turn_Off, State = 0
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Interpretation_Error =>
+         Put_Line ("    'Switch.Turn_Off' (State=0) -> "
                    & Ada.Exceptions.Exception_Message (E));
    end;
    begin
