@@ -724,6 +724,12 @@ procedure Interp_Demo is
                  Filter    => Filter)))),
               Statements => Body_Seq)));
 
+   --  "loop Body_Seq end loop" -- a plain (no-scheme) loop, exited from within.
+   function Plain_Loop (Body_Seq : Cursor) return Cursor is
+     (Add (B.Loop_Statement
+             (Iteration  => Add (B.No_Iteration),
+              Statements => Body_Seq)));
+
    --  Case choices and alternatives.
    function Val_Choice (V : Integer) return Cursor is
      (Add (B.Choice_Expression (Value => Lit (V))));
@@ -2883,6 +2889,14 @@ procedure Interp_Demo is
            For_Of (E_Def, Ref (Str_Var), Seq ([Print (Ref (E_Def))]),
                    Filter => Bin (Op_Gt, Ref (E_Def), Str_Lit ("C")))]);
 
+   --  A plain 'loop ... end loop' (no while/for scheme), exited from within.
+   --  N := 0; loop N := N + 1; exit when N >= 3; end loop; Put_Line (N);   -- 3
+   Plain_Loop_Program : constant Cursor :=
+     Seq ([Assign (N_Def, Lit (0)),
+           Plain_Loop (Seq ([Assign (N_Def, Bin (Op_Plus, Ref (N_Def), Lit (1))),
+                             Exit_When (Bin (Op_Ge, Ref (N_Def), Lit (3)))])),
+           Print (Ref (N_Def))]);                                          -- 3
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3795,6 +3809,14 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (String_For_Program);   -- D I A N A, then D I N
+
+   --  A plain 'loop ... end loop' (no iteration scheme), exited from within.
+   New_Line;
+   Put_Line ("Executing (plain loop with exit):");
+   Put_Line ("    N := 0; loop N := N + 1; exit when N >= 3; end loop; Put_Line (N);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Plain_Loop_Program);   -- 3
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

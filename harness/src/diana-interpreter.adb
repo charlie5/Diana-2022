@@ -2682,6 +2682,12 @@ package body Diana.Interpreter is
                   end if;
                end;
 
+            elsif Is_No_Iteration (Iteration) then  --  plain "loop ... end loop"
+               --  repeat the body until an exit / return / goto becomes pending.
+               while not Pending (Env) loop
+                  Execute (Statements, Env, Current);
+               end loop;
+
             else
                raise Interpretation_Error with "unsupported loop form";
             end if;
