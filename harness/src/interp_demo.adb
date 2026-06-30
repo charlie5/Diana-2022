@@ -591,6 +591,12 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("DX")));
    DE_Y         : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("DY")));
+
+   --  target-name ("@") demo variables.
+   TN_X         : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("TNX")));
+   TN_A         : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("TNA")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -620,6 +626,9 @@ procedure Interp_Demo is
      (Add (B.Used_Character (Definition => Add (B.Defining_Character
              (Spelling       => SU.To_Unbounded_String ("" & C),
               Representation  => Character'Pos (C))))));
+
+   --  the Ada 2022 target name "@" (a fresh node per use, so each has one parent).
+   function Targ return Cursor is (Add (B.Target_Name));
 
    function Ref (Definition : Cursor) return Cursor is
      (Add (B.Used_Object (Definition => Definition)));
@@ -3019,6 +3028,19 @@ procedure Interp_Demo is
                                  Var_Decl (DE_Y, Lit (10))],
                     Bin (Op_Mul, Ref (DE_X), Ref (DE_Y))))]);            -- 50
 
+   --  Ada 2022 target name "@": the assignment target's current value.
+   --  X := 10; X := @ + 5;            -- 15
+   --  A := (1,2,3); A (2) := @ * 10;  -- A (2) = 20, A (1) still 1
+   Target_Name_Program : constant Cursor :=
+     Seq ([Assign (TN_X, Lit (10)),
+           Assign (TN_X, Bin (Op_Plus, Targ, Lit (5))),         -- X := @ + 5
+           Print (Ref (TN_X)),                                  -- 15
+           Assign (TN_A, Arr ([Lit (1), Lit (2), Lit (3)])),
+           Assign_To (Index_At (Ref (TN_A), Lit (2)),           -- A (2) := @ * 10
+                      Bin (Op_Mul, Targ, Lit (10))),
+           Print (Index_At (Ref (TN_A), Lit (2))),              -- 20
+           Print (Index_At (Ref (TN_A), Lit (1)))]);            -- 1 (unchanged)
+
    --  Composite equality: arrays and records compare element-/component-wise.
    --  (1,2,3) = (1,2,3) -> True;  (1,2,3) = (1,9,3) -> False;
    --  (1,2) /= (1,2,3) -> True (lengths differ);  records likewise.
@@ -4029,6 +4051,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Declare_Expr_Program);   -- 42, 50
+
+   --  Ada 2022 target name "@" in an assignment RHS.
+   New_Line;
+   Put_Line ("Executing (target name '@' in assignments):");
+   Put_Line ("    X := 10; X := @ + 5; Put_Line (X);");
+   Put_Line ("    A := (1,2,3); A (2) := @ * 10; Put_Line (A (2)); Put_Line (A (1));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Target_Name_Program);   -- 15, 20, 1
 
    --  Composite equality: arrays and records compared element-/component-wise.
    New_Line;

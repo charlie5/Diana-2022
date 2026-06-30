@@ -150,6 +150,12 @@ package body Diana.Interpreter is
       Raised_Msg   : Symbol_Rep   := SU.Null_Unbounded_String;  -- its "with" message
       Handling     : Symbol_Rep   := SU.Null_Unbounded_String;  -- exc. now in a handler
       Handling_Msg : Symbol_Rep   := SU.Null_Unbounded_String;  -- its message
+      --  the "@" assignment target (Ada 2022): evaluated lazily and cached for
+      --  the duration of one assignment's right-hand side.
+      Target_Expr  : Cursor       := No_Element;     --  No_Element when not in an assignment
+      Target_Scope : Positive     := 1;              --  scope to evaluate it in
+      Target_Value : Static_Value := (Kind => No_Value);
+      Target_Ready : Boolean      := False;          --  True once "@" has been evaluated
    end record;
 
    function Pending (Env : Environment) return Boolean
@@ -1718,6 +1724,18 @@ package body Diana.Interpreter is
       elsif Is_Parenthesized_Expression (Expr) then
          return Evaluate (As_Parenthesized_Expression (Expr).Operand, Env, Current);
 
+      elsif Is_Target_Name (Expr) then
+         --  "@" in an assignment RHS: the current value of the assignment
+         --  target, evaluated once and cached for the rest of the RHS.
+         if Env.Target_Expr = No_Element then
+            raise Interpretation_Error with "'@' used outside an assignment";
+         end if;
+         if not Env.Target_Ready then
+            Env.Target_Value := Evaluate (Env.Target_Expr, Env, Env.Target_Scope);
+            Env.Target_Ready := True;
+         end if;
+         return Env.Target_Value;
+
       elsif Is_Used_Character (Expr) then
          --  a character literal, modelled as a one-character string (consistent
          --  with string indexing, which also yields a one-character string).
@@ -2484,9 +2502,25 @@ package body Diana.Interpreter is
       elsif Is_Assignment (Stmt) then
          declare
             Target : constant Cursor := As_Assignment (Stmt).Target;
-            Value  : constant Static_Value :=
-              Evaluate (As_Assignment (Stmt).Source, Env, Current);
+            Value  : Static_Value;
          begin
+            --  evaluate the RHS with the "@" target context set (Ada 2022),
+            --  then restore the enclosing context.
+            declare
+               Saved_Expr  : constant Cursor       := Env.Target_Expr;
+               Saved_Scope : constant Positive     := Env.Target_Scope;
+               Saved_Value : constant Static_Value := Env.Target_Value;
+               Saved_Ready : constant Boolean      := Env.Target_Ready;
+            begin
+               Env.Target_Expr  := Target;
+               Env.Target_Scope := Current;
+               Env.Target_Ready := False;
+               Value := Evaluate (As_Assignment (Stmt).Source, Env, Current);
+               Env.Target_Expr  := Saved_Expr;
+               Env.Target_Scope := Saved_Scope;
+               Env.Target_Value := Saved_Value;
+               Env.Target_Ready := Saved_Ready;
+            end;
             if Env.Raising then              --  the source expression raised
                return;
             elsif Is_Dereference (Target) then       --  name.all := Value
