@@ -162,6 +162,14 @@ procedure Interp_Demo is
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Access")));
    Image_Attr  : constant Cursor :=
      Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Image")));
+   Floor_Attr      : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Floor")));
+   Ceiling_Attr    : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Ceiling")));
+   Truncation_Attr : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Truncation")));
+   Rounding_Attr   : constant Cursor :=
+     Add (B.Attribute_Name (Spelling => SU.To_Unbounded_String ("Rounding")));
    My_Error    : constant Cursor :=
      Add (B.Exception_Name (Spelling => SU.To_Unbounded_String ("My_Error")));
    ExcMsg_Name : constant Cursor :=
@@ -2644,6 +2652,16 @@ procedure Interp_Demo is
            Print (Convert (Integer_Type, Real_Lit ("3.2"))),
            Print (Qualify (Integer_Type, Lit (5)))]);
 
+   --  Put_Line (Float'Floor (3.7));       -- 3.0000
+   --  Put_Line (Float'Ceiling (3.2));     -- 4.0000
+   --  Put_Line (Float'Truncation (3.9));  -- 3.0000
+   --  Put_Line (Float'Rounding (3.5));    -- 4.0000
+   Real_Attr_Program : constant Cursor :=
+     Seq ([Print (Attr_Call (Float_Type, Floor_Attr,      Real_Lit ("3.7"))),
+           Print (Attr_Call (Float_Type, Ceiling_Attr,    Real_Lit ("3.2"))),
+           Print (Attr_Call (Float_Type, Truncation_Attr, Real_Lit ("3.9"))),
+           Print (Attr_Call (Float_Type, Rounding_Attr,   Real_Lit ("3.5")))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3440,6 +3458,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Conversion_Program);   -- 3.0000, 4, 3, 5
+
+   --  Real-valued attributes: 'Floor / 'Ceiling / 'Truncation / 'Rounding.
+   New_Line;
+   Put_Line ("Executing (real attributes 'Floor/'Ceiling/'Truncation/'Rounding):");
+   Put_Line ("    Put_Line (Float'Floor (3.7)); Put_Line (Float'Ceiling (3.2));");
+   Put_Line ("    Put_Line (Float'Truncation (3.9)); Put_Line (Float'Rounding (3.5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Real_Attr_Program);   -- 3.0000, 4.0000, 3.0000, 4.0000
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

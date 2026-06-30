@@ -1573,6 +1573,15 @@ package body Diana.Interpreter is
                --  Image — note: no Ada-style leading space for non-negatives).
                if Attribute = "Image" then
                   return Str (SU.To_Unbounded_String (Image (Arg_Val)));
+               --  real-valued attributes: round/truncate a real to a whole real.
+               elsif Attribute = "Floor" then
+                  return Real_V (Long_Long_Float'Floor (Real_Of (Arg_Val)));
+               elsif Attribute = "Ceiling" then
+                  return Real_V (Long_Long_Float'Ceiling (Real_Of (Arg_Val)));
+               elsif Attribute = "Truncation" then
+                  return Real_V (Long_Long_Float'Truncation (Real_Of (Arg_Val)));
+               elsif Attribute = "Rounding" then
+                  return Real_V (Long_Long_Float'Rounding (Real_Of (Arg_Val)));
                end if;
                --  discrete attributes: enumeration values are their position, so
                --  Succ / Pred are +/-1 and Pos / Val are the identity.

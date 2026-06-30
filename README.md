@@ -98,7 +98,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   (`new`, `.all`, `null`, aliasing), and array / record aggregates with value
   semantics (indexing, selection, component assignment, and the
   `'First`/`'Last`/`'Length` attributes and **slices** `A (L .. H)`), and the
-  scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image`.
+  scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image` and the
+  real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`.
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (over an array's elements or a record's components, with the Ada 2022 `when`
   filter), `case` (over integers or enumerations — an enumeration value carries
