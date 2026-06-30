@@ -432,6 +432,17 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
    SB_Y     : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
+   --  tagged-private-generic-formal-type demo: the formal tagged private type
+   --  "Widget", its primitive operation "Width" (+ its parameter), and Padded's
+   --  parameter (two instances with different Width "implementations").
+   Widget_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Widget")));
+   Width_Sub   : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Width")));
+   Width_W     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("W")));
+   PD_W        : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("W")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -717,6 +728,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Private_Type (Is_Limited => True)))));
+   --  a "type Name is tagged private;" generic formal tagged private type.
+   function Generic_Tagged_Private_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Private_Type (Is_Tagged => True)))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -2097,6 +2113,44 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Sum_Boxes_Int, [Lit (10), Lit (20)])),
            Print (Sub_Call (Sum_Boxes_Int, [Lit (3), Lit (4)]))]);
 
+   --  generic
+   --     type Widget is tagged private;        -- tagged: a primitive operation
+   --     with function Width (W : Widget) return Integer;
+   --  function Padded (W : Widget) return Integer is
+   --  begin return Width (W) + 2; end;          -- calls the primitive
+   Padded : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Padded"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Tagged_Private_Formal (Widget_Type),
+                 Generic_Sub_Formal (Width_Sub, Func_Spec ([In_Par (Width_W)]))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (PD_W)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus,
+               Sub_Call (Width_Sub, [Ref (PD_W)]), Lit (2)))])));
+
+   --  two "subclasses": Width is Double for one, Square_Area for the other
+   --  function Padded_Button is new Padded (Integer, Double);
+   --  function Padded_Icon   is new Padded (Integer, Square_Area);
+   Padded_Button : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Padded_Button"),
+             Completion => Instance_Of (Padded,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Double_Def))])));
+   Padded_Icon : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Padded_Icon"),
+             Completion => Instance_Of (Padded,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Square_Area_Def))])));
+
+   --  Put_Line (Padded_Button (10));  -- Double (10) + 2      = 22
+   --  Put_Line (Padded_Icon (10));    -- Square_Area (10) + 2 = 102
+   Tagged_Private_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Padded_Button, [Lit (10)])),
+           Print (Sub_Call (Padded_Icon,   [Lit (10)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2707,6 +2761,22 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Limited_Private_Formal_Program);
+
+   --  Formal tagged private types: a tagged type's characteristic is its
+   --  primitive operations; supplied here as a formal subprogram Width, with two
+   --  instances giving it different "implementations" (Double, Square_Area).
+   New_Line;
+   Put_Line ("Executing (formal tagged private types):");
+   Put_Line ("    generic type Widget is tagged private;");
+   Put_Line ("            with function Width (W : Widget) return Integer;");
+   Put_Line ("    function Padded (W : Widget) return Integer");
+   Put_Line ("       is begin return Width (W) + 2; end;");
+   Put_Line ("    function Padded_Button is new Padded (Integer, Double);");
+   Put_Line ("    function Padded_Icon   is new Padded (Integer, Square_Area);");
+   Put_Line ("    Put_Line (Padded_Button (10)); Put_Line (Padded_Icon (10));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Tagged_Private_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
