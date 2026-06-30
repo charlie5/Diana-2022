@@ -354,7 +354,7 @@ package body Diana.Interpreter is
       return V.Text;
    end Str_Of;
 
-   function Image (V : Static_Value) return String is
+   function Image (V : Static_Value; Env : Environment) return String is
    begin
       case V.Kind is
          when Integer_Value =>
@@ -377,8 +377,43 @@ package body Diana.Interpreter is
                     else "access #"
                          & Ada.Strings.Fixed.Trim
                              (Natural'Image (V.Address), Ada.Strings.Both));
-         when Array_Value   => return "(array)";
-         when Record_Value  => return "(record)";
+         when Array_Value   =>
+            --  render the elements: "(e1, e2, ...)"
+            declare
+               Elements : constant Value_Vectors.Vector := Env.Arrays (V.Elements);
+               Result   : SU.Unbounded_String := SU.To_Unbounded_String ("(");
+            begin
+               for I in 1 .. Natural (Elements.Length) loop
+                  if I > 1 then
+                     SU.Append (Result, ", ");
+                  end if;
+                  SU.Append (Result, Image (Elements (I), Env));
+               end loop;
+               SU.Append (Result, ")");
+               return SU.To_String (Result);
+            end;
+         when Record_Value  =>
+            --  render the components in component-name order: "(N1 => v1, ...)"
+            declare
+               Fields : constant Value_Maps.Map := Env.Records (V.Fields);
+               Names  : Name_Vectors.Vector;
+               Result : SU.Unbounded_String := SU.To_Unbounded_String ("(");
+               First  : Boolean := True;
+            begin
+               for C in Fields.Iterate loop
+                  Names.Append (Value_Maps.Key (C));
+               end loop;
+               Name_Sorting.Sort (Names);
+               for N of Names loop
+                  if not First then
+                     SU.Append (Result, ", ");
+                  end if;
+                  First := False;
+                  SU.Append (Result, N & " => " & Image (Fields.Element (N), Env));
+               end loop;
+               SU.Append (Result, ")");
+               return SU.To_String (Result);
+            end;
          when Enum_Value    => return SU.To_String (V.Lit_Name);   --  by name
          when Package_Value => return "(package)";
          when Subprogram_Value => return "(subprogram)";
@@ -1866,7 +1901,7 @@ package body Diana.Interpreter is
                --  'Image renders any value to its string form (the interpreter's
                --  Image — note: no Ada-style leading space for non-negatives).
                if Attribute = "Image" then
-                  return Str (SU.To_Unbounded_String (Image (Arg_Val)));
+                  return Str (SU.To_Unbounded_String (Image (Arg_Val, Env)));
                --  real-valued attributes: round/truncate a real to a whole real.
                elsif Attribute = "Floor" then
                   return Real_V (Long_Long_Float'Floor (Real_Of (Arg_Val)));
@@ -2475,7 +2510,7 @@ package body Diana.Interpreter is
                Env.Raised  := SU.To_Unbounded_String (Spelling_Of (Definition_Of (Exc)));
                if Msg /= No_Element and then not Is_Void (Msg) then
                   Env.Raised_Msg :=
-                    SU.To_Unbounded_String (Image (Evaluate (Msg, Env, Current)));
+                    SU.To_Unbounded_String (Image (Evaluate (Msg, Env, Current), Env));
                else
                   Env.Raised_Msg := SU.Null_Unbounded_String;
                end if;
@@ -2634,7 +2669,7 @@ package body Diana.Interpreter is
                              Evaluate (As_Positional_Association (A).Value, Env, Current);
                         begin
                            exit when Env.Raising;   --  the argument expression raised
-                           Put_Line (Image (V));
+                           Put_Line (Image (V, Env));
                         end;
                      end loop;
                   elsif Is_Subprogram_Name (Def) then
@@ -2962,7 +2997,7 @@ package body Diana.Interpreter is
                   raise Assertion_Error with
                     (if Natural (Args.Length) >= 2
                      then Image (Evaluate (As_Positional_Association (Args (2)).Value,
-                                           Env, Current))
+                                           Env, Current), Env)
                      else "assertion failed");
                end if;
             end if;

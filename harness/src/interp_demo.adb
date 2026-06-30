@@ -3041,6 +3041,16 @@ procedure Interp_Demo is
            Print (Index_At (Ref (TN_A), Lit (2))),              -- 20
            Print (Index_At (Ref (TN_A), Lit (1)))]);            -- 1 (unchanged)
 
+   --  'Image / Put_Line over composite values renders elements / components.
+   --  (1,2,3) -> "(1, 2, 3)"; (X=>1,Y=>2) -> "(X => 1, Y => 2)";
+   --  ((1,2),(3,4)) -> "((1, 2), (3, 4))".
+   Composite_Image_Program : constant Cursor :=
+     Seq ([Print (Arr ([Lit (1), Lit (2), Lit (3)])),
+           Print (Rec ([Field_Assoc (X_Field, Lit (1)),
+                        Field_Assoc (Y_Field, Lit (2))])),
+           Print (Arr ([Arr ([Lit (1), Lit (2)]),
+                        Arr ([Lit (3), Lit (4)])]))]);
+
    --  Composite equality: arrays and records compare element-/component-wise.
    --  (1,2,3) = (1,2,3) -> True;  (1,2,3) = (1,9,3) -> False;
    --  (1,2) /= (1,2,3) -> True (lengths differ);  records likewise.
@@ -4060,6 +4070,16 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Target_Name_Program);   -- 15, 20, 1
+
+   --  Put_Line over composite values renders their elements / components.
+   New_Line;
+   Put_Line ("Executing (rendering composite values):");
+   Put_Line ("    Put_Line ((1, 2, 3)); Put_Line ((X => 1, Y => 2));");
+   Put_Line ("    Put_Line (((1, 2), (3, 4)));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Composite_Image_Program);
+   --  (1, 2, 3) / (X => 1, Y => 2) / ((1, 2), (3, 4))
 
    --  Composite equality: arrays and records compared element-/component-wise.
    New_Line;

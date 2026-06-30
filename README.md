@@ -107,7 +107,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   semantics — positional `(1, 2, 3)`, named-index `(1 => 10, others => 0)`, and
   record `(X => 1, Y => 2)` (indexing, selection, component assignment incl.
   nested targets `A (I).F` / `R.F (I)` / `A (I)(J)`, the
-  `'First`/`'Last`/`'Length`/`'Range` attributes and **slices** `A (L .. H)`), and the
+  `'First`/`'Last`/`'Length`/`'Range` attributes, **slices** `A (L .. H)`, and
+  rendering via `Put_Line`/`'Image` — `(1, 2, 3)` / `(X => 1, Y => 2)`,
+  recursively), and the
   scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image` (for a
   declared enumeration type, `'Val`/`'Succ`/`'Pred` yield the *named* literal,
   and `T'First`/`T'Last` name the first/last literal),
