@@ -981,7 +981,37 @@ package body Diana.Interpreter is
                return Real_V (Real_Of (L) ** Natural (Whole_Of (R)));
             end if;
          elsif Is_Op_Concatenate (Op) then
-            return Str (SU."&" (Str_Of (L), Str_Of (R)));
+            if L.Kind = Array_Value or else R.Kind = Array_Value then
+               --  array concatenation: array & array, array & element, and
+               --  element & array -- a fresh array with value semantics.
+               declare
+                  Result : Value_Vectors.Vector;
+                  procedure Add_Side (V : Static_Value) is
+                  begin
+                     if V.Kind = Array_Value then
+                        --  snapshot first: Copy may grow Env.Arrays and so
+                        --  invalidate a reference into it (see Copy).
+                        declare
+                           Source : constant Value_Vectors.Vector :=
+                             Env.Arrays (V.Elements);
+                        begin
+                           for E of Source loop
+                              Result.Append (Copy (Env, E));
+                           end loop;
+                        end;
+                     else
+                        Result.Append (Copy (Env, V));
+                     end if;
+                  end Add_Side;
+               begin
+                  Add_Side (L);
+                  Add_Side (R);
+                  Env.Arrays.Append (Result);
+                  return (Kind => Array_Value, Elements => Env.Arrays.Last_Index);
+               end;
+            else
+               return Str (SU."&" (Str_Of (L), Str_Of (R)));
+            end if;
          elsif Is_Op_And (Op) then return Bool (Bool_Of (L) and Bool_Of (R));
          elsif Is_Op_Or (Op)  then return Bool (Bool_Of (L) or Bool_Of (R));
          elsif Is_Op_Xor (Op) then return Bool (Bool_Of (L) xor Bool_Of (R));

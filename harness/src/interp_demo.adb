@@ -553,6 +553,14 @@ procedure Interp_Demo is
    --  if evaluated, so reaching it proves the short circuit did not occur.
    SC_Undef     : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Not_Evaluated")));
+
+   --  array-concatenation demo variables.
+   Cat_A        : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("A")));
+   Cat_B        : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("B")));
+   Cat_C        : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("C")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -2744,6 +2752,24 @@ procedure Interp_Demo is
            Print (And_Then_Of (No,  Ref (SC_Undef))),      -- False (Right skipped)
            Print (Or_Else_Of  (Yes, Ref (SC_Undef)))]);    -- True  (Right skipped)
 
+   --  A := (1, 2, 3);  B := (4, 5);
+   --  C := A & B;          Put_Line (C'Length); Put_Line (C (1)); Put_Line (C (5));
+   --  C := A & 99;         Put_Line (C'Length); Put_Line (C (4));   -- array & element
+   --  C := 0 & B;          Put_Line (C (1)); Put_Line (C (3));      -- element & array
+   Concat_Program : constant Cursor :=
+     Seq ([Assign (Cat_A, Arr ([Lit (1), Lit (2), Lit (3)])),
+           Assign (Cat_B, Arr ([Lit (4), Lit (5)])),
+           Assign (Cat_C, Bin (Op_Cat, Ref (Cat_A), Ref (Cat_B))),
+           Print (Attr (Ref (Cat_C), Length_Attr)),          -- 5
+           Print (Index_At (Ref (Cat_C), Lit (1))),          -- 1
+           Print (Index_At (Ref (Cat_C), Lit (5))),          -- 5
+           Assign (Cat_C, Bin (Op_Cat, Ref (Cat_A), Lit (99))),
+           Print (Attr (Ref (Cat_C), Length_Attr)),          -- 4
+           Print (Index_At (Ref (Cat_C), Lit (4))),          -- 99
+           Assign (Cat_C, Bin (Op_Cat, Lit (0), Ref (Cat_B))),
+           Print (Index_At (Ref (Cat_C), Lit (1))),          -- 0
+           Print (Index_At (Ref (Cat_C), Lit (3)))]);        -- 5
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3582,6 +3608,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Short_Circuit_Program);   -- True, False, True, False, False, True
+
+   --  Array concatenation with "&": array & array, array & element, element & array.
+   New_Line;
+   Put_Line ("Executing (array concatenation with &):");
+   Put_Line ("    A := (1, 2, 3);  B := (4, 5);");
+   Put_Line ("    C := A & B;   Put_Line (C'Length); Put_Line (C (1)); Put_Line (C (5));");
+   Put_Line ("    C := A & 99;  Put_Line (C'Length); Put_Line (C (4));");
+   Put_Line ("    C := 0 & B;   Put_Line (C (1)); Put_Line (C (3));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Concat_Program);   -- 5, 1, 5, 4, 99, 0, 5
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

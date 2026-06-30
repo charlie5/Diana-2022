@@ -94,8 +94,10 @@ hoisted to the highest applicable class.
 `harness/interp_demo` builds small DIANA programs with `Diana.Builders` and runs
 them through `Diana.Interpreter`. Between them the interpreter covers:
 
-- **Values:** integer, real (with promotion), boolean, string (`&`), access
-  (`new`, `.all`, `null`, aliasing), and array / record aggregates with value
+- **Values:** integer, real (with promotion), boolean, string, access
+  (`new`, `.all`, `null`, aliasing), `&` concatenation over strings **and
+  arrays** (array & array, array & element, element & array), and array / record
+  aggregates with value
   semantics — positional `(1, 2, 3)`, named-index `(1 => 10, others => 0)`, and
   record `(X => 1, Y => 2)` (indexing, selection, component assignment, the
   `'First`/`'Last`/`'Length`/`'Range` attributes and **slices** `A (L .. H)`), and the
