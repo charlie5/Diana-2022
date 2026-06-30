@@ -1001,6 +1001,24 @@ package body Diana.Interpreter is
             return Real_Of (A) < Real_Of (B);
          elsif A.Kind = String_Value and then B.Kind = String_Value then
             return SU."<" (A.Text, B.Text);
+         elsif A.Kind = Array_Value and then B.Kind = Array_Value then
+            --  lexicographic order over one-dimensional arrays: compare element
+            --  by element; if one is a prefix of the other, the shorter is less.
+            declare
+               EA : constant Value_Vectors.Vector := Env.Arrays (A.Elements);
+               EB : constant Value_Vectors.Vector := Env.Arrays (B.Elements);
+               N  : constant Natural :=
+                 Natural'Min (Natural (EA.Length), Natural (EB.Length));
+            begin
+               for I in 1 .. N loop
+                  if Less (EA (I), EB (I)) then
+                     return True;
+                  elsif Less (EB (I), EA (I)) then
+                     return False;
+                  end if;
+               end loop;
+               return Natural (EA.Length) < Natural (EB.Length);
+            end;
          else
             raise Interpretation_Error with "incompatible operands in comparison";
          end if;

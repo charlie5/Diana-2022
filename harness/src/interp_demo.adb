@@ -2941,6 +2941,16 @@ procedure Interp_Demo is
                     Rec ([Field_Assoc (X_Field, Lit (1)), Field_Assoc (Y_Field, Lit (2))]),
                     Rec ([Field_Assoc (X_Field, Lit (1)), Field_Assoc (Y_Field, Lit (9))])))]); -- False
 
+   --  Lexicographic array ordering: compared element by element, the shorter
+   --  array being "less" when it is a prefix of the longer.
+   Array_Order_Program : constant Cursor :=
+     Seq ([Print (Bin (Op_Lt, Arr ([Lit (1), Lit (2)]), Arr ([Lit (1), Lit (3)]))),  -- True
+           Print (Bin (Op_Lt, Arr ([Lit (1), Lit (3)]), Arr ([Lit (1), Lit (2)]))),  -- False
+           Print (Bin (Op_Lt, Arr ([Lit (1), Lit (2)]),                              -- True (prefix)
+                               Arr ([Lit (1), Lit (2), Lit (0)]))),
+           Print (Bin (Op_Gt, Arr ([Lit (2)]), Arr ([Lit (1), Lit (9)]))),           -- True
+           Print (Bin (Op_Le, Arr ([Lit (1), Lit (2)]), Arr ([Lit (1), Lit (2)])))]);-- True
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3887,6 +3897,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Composite_Eq_Program);   -- True, False, True, True, False
+
+   --  Lexicographic ordering of arrays.
+   New_Line;
+   Put_Line ("Executing (lexicographic array ordering):");
+   Put_Line ("    Put_Line ((1,2) < (1,3)); Put_Line ((1,3) < (1,2));");
+   Put_Line ("    Put_Line ((1,2) < (1,2,0)); Put_Line ((2) > (1,9)); Put_Line ((1,2) <= (1,2));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Array_Order_Program);   -- True, False, True, True, True
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
