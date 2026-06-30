@@ -96,7 +96,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 
 - **Values:** integer, real (with promotion), boolean, string (`&`), access
   (`new`, `.all`, `null`, aliasing), and array / record aggregates with value
-  semantics (indexing, selection, component assignment, and the
+  semantics — positional `(1, 2, 3)`, named-index `(1 => 10, others => 0)`, and
+  record `(X => 1, Y => 2)` (indexing, selection, component assignment, and the
   `'First`/`'Last`/`'Length` attributes and **slices** `A (L .. H)`), and the
   scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image` and the
   real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`.

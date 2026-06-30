@@ -402,6 +402,18 @@ package body Diana.Interpreter is
       return Spelling_Of (Definition_Of (As_Choice_Expression (Choices (1)).Value));
    end Field_Name;
 
+   --  True when a named aggregate's first association selects by an integer
+   --  index ("N => ...") rather than a component name -- i.e. it is an ARRAY
+   --  aggregate, not a record aggregate (whose choices are component names).
+   function First_Choice_Is_Index (Assoc : Cursor) return Boolean is
+      Choices : constant Node_List :=
+        As_Choice_S (As_Named_Association (Assoc).Choices).List;
+   begin
+      return not Choices.Is_Empty
+        and then Is_Choice_Expression (Choices (1))
+        and then Is_Numeric_Literal (As_Choice_Expression (Choices (1)).Value);
+   end First_Choice_Is_Index;
+
    --  Record the Pre / Post aspect conditions of a declaration's Properties
    --  list under the subprogram name, for checking at each call.
    procedure Register_Contracts (Env : in out Environment; Name : String;
@@ -1403,6 +1415,95 @@ package body Diana.Interpreter is
                   end loop;
                   Env.Arrays.Append (Elements);
                   return (Kind => Array_Value, Elements => Env.Arrays.Last_Index);
+               end;
+            elsif Is_Named_Association (Items (1))
+              and then First_Choice_Is_Index (Items (1))
+            then
+               --  named ARRAY aggregate (integer-index choices: "N => V",
+               --  "Lo .. Hi => V", "others => V") => an array value (1-based).
+               declare
+                  Max_Index   : Natural := 0;
+                  Has_Others  : Boolean := False;
+
+                  --  scan the index choices of an association
+                  procedure Scan (Choices : Cursor) is
+                  begin
+                     for C of As_Choice_S (Choices).List loop
+                        if Is_Choice_Expression (C) then
+                           Max_Index := Natural'Max (Max_Index, Natural (Whole_Of
+                             (Evaluate (As_Choice_Expression (C).Value, Env, Current))));
+                        elsif Is_Choice_Range (C) then
+                           declare
+                              Lo, Hi : Long_Long_Integer;
+                           begin
+                              Eval_Range (As_Choice_Range (C).Range_Item, Env,
+                                          Current, Lo, Hi);
+                              Max_Index := Natural'Max (Max_Index, Natural (Hi));
+                           end;
+                        elsif Is_Others_Choice (C) then
+                           Has_Others := True;
+                        end if;
+                     end loop;
+                  end Scan;
+               begin
+                  for A of Items loop
+                     Scan (As_Named_Association (A).Choices);
+                  end loop;
+                  declare
+                     Elements : Value_Vectors.Vector;
+                     Filled   : array (1 .. Max_Index) of Boolean :=
+                       [others => False];
+                     Others_V : Static_Value := (Kind => No_Value);
+                  begin
+                     for I in 1 .. Max_Index loop
+                        Elements.Append (Static_Value'(Kind => No_Value));
+                     end loop;
+                     for A of Items loop
+                        declare
+                           V : constant Static_Value :=
+                             Evaluate (As_Named_Association (A).Actual, Env, Current);
+                        begin
+                           for C of As_Choice_S
+                                      (As_Named_Association (A).Choices).List
+                           loop
+                              if Is_Choice_Expression (C) then
+                                 declare
+                                    Idx : constant Positive := Positive (Whole_Of
+                                      (Evaluate (As_Choice_Expression (C).Value,
+                                                 Env, Current)));
+                                 begin
+                                    Elements.Replace_Element (Idx, Copy (Env, V));
+                                    Filled (Idx) := True;
+                                 end;
+                              elsif Is_Choice_Range (C) then
+                                 declare
+                                    Lo, Hi : Long_Long_Integer;
+                                 begin
+                                    Eval_Range (As_Choice_Range (C).Range_Item,
+                                                Env, Current, Lo, Hi);
+                                    for I in Positive (Lo) .. Positive (Hi) loop
+                                       Elements.Replace_Element (I, Copy (Env, V));
+                                       Filled (I) := True;
+                                    end loop;
+                                 end;
+                              elsif Is_Others_Choice (C) then
+                                 Others_V := V;
+                              end if;
+                           end loop;
+                        end;
+                     end loop;
+                     for I in 1 .. Max_Index loop      --  fill gaps with "others"
+                        if not Filled (I) then
+                           if not Has_Others then
+                              raise Interpretation_Error with
+                                "array aggregate leaves index" & I'Image & " unset";
+                           end if;
+                           Elements.Replace_Element (I, Copy (Env, Others_V));
+                        end if;
+                     end loop;
+                     Env.Arrays.Append (Elements);
+                     return (Kind => Array_Value, Elements => Env.Arrays.Last_Index);
+                  end;
                end;
             else
                --  named components => record value

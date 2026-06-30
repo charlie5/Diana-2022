@@ -541,6 +541,11 @@ procedure Interp_Demo is
    --  slice demo: an array variable "Arr".
    SL_Arr       : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Arr")));
+   --  named-array-aggregate demo: a dense "Arr" and a sparse "Sparse".
+   NA_Arr       : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Arr")));
+   NA_Sparse    : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sparse")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -960,6 +965,19 @@ procedure Interp_Demo is
      (Add (B.Qualified_Expression
              (Target  => Add (B.Used_Name (Definition => Type_Def)),
               Operand => Operand)));
+
+   --  named array aggregate associations "N => V" / "others => V", and the
+   --  aggregate "(assoc, assoc, ...)".
+   function Idx_Assoc (Index : Integer; Value : Cursor) return Cursor is
+     (Add (B.Named_Association
+             (Choices => Add (B.Choice_S (List => NL ([Val_Choice (Index)]))),
+              Actual  => Value)));
+   function Others_Assoc (Value : Cursor) return Cursor is
+     (Add (B.Named_Association
+             (Choices => Add (B.Choice_S (List => NL ([Others_Ch]))),
+              Actual  => Value)));
+   function Named_Arr (Assocs : Cursor_Array) return Cursor is
+     (Add (B.Aggregate (Associations => Add (B.Association_S (List => NL (Assocs))))));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2662,6 +2680,21 @@ procedure Interp_Demo is
            Print (Attr_Call (Float_Type, Truncation_Attr, Real_Lit ("3.9"))),
            Print (Attr_Call (Float_Type, Rounding_Attr,   Real_Lit ("3.5")))]);
 
+   --  declare Arr    : ... := (1 => 10, 2 => 20, 3 => 30);
+   --          Sparse : ... := (1 => 100, 3 => 300, others => 0);
+   --  begin Put_Line (Arr (2)); Put_Line (Sparse (2)); Put_Line (Sparse (3)); end;
+   Named_Agg_Program : constant Cursor :=
+     Block_Stmt
+       ([Var_Decl (NA_Arr,
+           Named_Arr ([Idx_Assoc (1, Lit (10)), Idx_Assoc (2, Lit (20)),
+                       Idx_Assoc (3, Lit (30))])),
+         Var_Decl (NA_Sparse,
+           Named_Arr ([Idx_Assoc (1, Lit (100)), Idx_Assoc (3, Lit (300)),
+                       Others_Assoc (Lit (0))]))],
+        [Print (Index_At (Ref (NA_Arr), Lit (2))),       -- 20
+         Print (Index_At (Ref (NA_Sparse), Lit (2))),    -- 0 (others)
+         Print (Index_At (Ref (NA_Sparse), Lit (3)))]);  -- 300
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3467,6 +3500,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Real_Attr_Program);   -- 3.0000, 4.0000, 3.0000, 4.0000
+
+   --  Named array aggregates: "N => V" index choices, with "others => V" filling
+   --  the gaps.
+   New_Line;
+   Put_Line ("Executing (named array aggregates):");
+   Put_Line ("    Arr := (1 => 10, 2 => 20, 3 => 30);");
+   Put_Line ("    Sparse := (1 => 100, 3 => 300, others => 0);");
+   Put_Line ("    Put_Line (Arr (2)); Put_Line (Sparse (2)); Put_Line (Sparse (3));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Named_Agg_Program);   -- 20, 0, 300
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
