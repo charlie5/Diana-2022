@@ -419,6 +419,19 @@ procedure Interp_Demo is
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Item")));
    EC_X      : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   --  limited-private-generic-formal-type demo: the formal limited private type
+   --  "Box", a supplied accessor "Peek" (+ its parameter), and Sum_Boxes' two
+   --  parameters (a limited private type has no := or =, only supplied ops).
+   Box_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Box")));
+   Peek_Sub : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Peek")));
+   Peek_B   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   SB_X     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   SB_Y     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("Y")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -699,6 +712,11 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Incomplete_Type))));
+   --  a "type Name is limited private;" generic formal limited private type.
+   function Generic_Limited_Private_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Private_Type (Is_Limited => True)))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -2048,6 +2066,37 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Int_Echo, [Lit (42)])),
            Print (Sub_Call (Str_Echo, [Str_Lit ("hi")]))]);
 
+   --  generic
+   --     type Box is limited private;   -- limited: no ":=" and no "=", only Peek
+   --     with function Peek (B : Box) return Integer;
+   --  function Sum_Boxes (X, Y : Box) return Integer is
+   --  begin return Peek (X) + Peek (Y); end;
+   Sum_Boxes : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Sum_Boxes"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Limited_Private_Formal (Box_Type),
+                 Generic_Sub_Formal (Peek_Sub, Func_Spec ([In_Par (Peek_B)]))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (SB_X), In_Par (SB_Y)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus,
+               Sub_Call (Peek_Sub, [Ref (SB_X)]),
+               Sub_Call (Peek_Sub, [Ref (SB_Y)])))])));
+
+   --  function Sum_Boxes_Int is new Sum_Boxes (Integer, Double);  -- Peek = Double
+   Sum_Boxes_Int : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Sum_Boxes_Int"),
+             Completion => Instance_Of (Sum_Boxes,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Double_Def))])));
+
+   --  Put_Line (Sum_Boxes_Int (10, 20));  -- Double (10) + Double (20) = 60
+   --  Put_Line (Sum_Boxes_Int (3, 4));    -- Double (3) + Double (4)  = 14
+   Limited_Private_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Sum_Boxes_Int, [Lit (10), Lit (20)])),
+           Print (Sub_Call (Sum_Boxes_Int, [Lit (3), Lit (4)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2643,6 +2692,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Incomplete_Formal_Program);
+
+   --  Formal limited private types: a limited private type has no ":=" and no
+   --  "=", so the body can only use a supplied operation (the formal subprogram
+   --  Peek), not built-in equality; instantiated with Integer and Double as Peek.
+   New_Line;
+   Put_Line ("Executing (formal limited private types):");
+   Put_Line ("    generic type Box is limited private;");
+   Put_Line ("            with function Peek (B : Box) return Integer;");
+   Put_Line ("    function Sum_Boxes (X, Y : Box) return Integer");
+   Put_Line ("       is begin return Peek (X) + Peek (Y); end;");
+   Put_Line ("    function Sum_Boxes_Int is new Sum_Boxes (Integer, Double);");
+   Put_Line ("    Put_Line (Sum_Boxes_Int (10, 20)); Put_Line (Sum_Boxes_Int (3, 4));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Limited_Private_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
