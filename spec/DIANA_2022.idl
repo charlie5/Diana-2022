@@ -4,11 +4,13 @@
 -- An updated, backwards-compatible DIANA intermediate representation, written
 -- in the Wulf/Lamb/Nestor IDL (NOT CORBA IDL).
 --
--- STATUS: v0.1 CORE. Establishes the architecture, conventions, and a faithful
---   core node set derived from the DIANA Rev 3 domain (see
---   references/DIANA_Rev3_node_attributes.md). The full Ada 2022 surface (tasks,
---   complete type system, contracts detail, parallelism, ...) is marked with
---   "TODO(2022)" extension points to be filled in subsequent passes.
+-- STATUS: substantially complete. Establishes the architecture, conventions,
+--   and a node set derived from the DIANA Rev 3 domain (see
+--   references/DIANA_Rev3_node_attributes.md) and extended across the Ada 2022
+--   surface — tasks, the type system, contracts, generics, parallelism. A few
+--   deliberate simplifications remain, flagged "TODO(2022)" (e.g. aspects are
+--   attached to base classes rather than refined to exact per-construct Ada
+--   legality); these are refinements, not missing constructs.
 --
 -- CONVENTIONS
 --   * Identifiers: Camel_Case, full words, initial capitals. The DIANA RM
@@ -27,7 +29,7 @@
 --             "_Void" = optional (Foo_Void ::= Foo | Void).
 --
 -- The Rev 3/4 short node names are exposed separately via a "Renames"
--- compatibility structure (spec/DIANA_2022_Compatibility.idl — TODO).
+-- compatibility structure (spec/DIANA_2022_Compatibility.idl).
 -- ===========================================================================
 
 Structure DIANA_2022 Root Diana_Node Is
@@ -794,9 +796,9 @@ Structure DIANA_2022 Root Diana_Node Is
     Synchronized_Interface => ;
     Task_Interface         => ;
     Protected_Interface    => ;
-    Task_Type              =>                                -- [Ada 22 RM 9.1]   (operations: TODO(2022))
+    Task_Type              =>                                -- [Ada 22 RM 9.1]   (entries/ops in the Definition's Declarations)
           Definition : Task_Definition;
-    Protected_Type =>                           -- [Ada 22 RM 9.4]   (operations: TODO(2022))
+    Protected_Type =>                           -- [Ada 22 RM 9.4]   (ops in the Definition's Declarations)
           Definition : Protected_Definition;
     Protected_Definition ::= Protected_Specification | Void;
     Protected_Specification =>
