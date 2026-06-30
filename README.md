@@ -105,7 +105,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   nested targets `A (I).F` / `R.F (I)` / `A (I)(J)`, the
   `'First`/`'Last`/`'Length`/`'Range` attributes and **slices** `A (L .. H)`), and the
   scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image` (for a
-  declared enumeration type, `'Val`/`'Succ`/`'Pred` yield the *named* literal),
+  declared enumeration type, `'Val`/`'Succ`/`'Pred` yield the *named* literal,
+  and `T'First`/`T'Last` name the first/last literal),
   the real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
   two-argument `'Min`/`'Max`, and `'Value` (parsing a string to a scalar, or to
   a named literal for a declared enumeration type).

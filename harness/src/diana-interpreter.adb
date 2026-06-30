@@ -1694,25 +1694,50 @@ package body Diana.Interpreter is
             elsif Attribute = "First" or else Attribute = "Last"
               or else Attribute = "Length"
             then
-               --  array/string bounds (both are 1-based: First = 1, Last = Length)
                declare
-                  Arr : constant Static_Value :=
-                    Evaluate (As_Attribute_Reference (Expr).Prefix, Env, Current);
-                  Length : Long_Long_Integer;
+                  Prefix : constant Cursor := As_Attribute_Reference (Expr).Prefix;
+                  --  the prefix's name, but only for a simple name (a type or
+                  --  object); "" for a computed prefix like A (I)'First.
+                  Prefix_Name : constant String :=
+                    (if Is_Used_Name (Prefix) or else Is_Used_Object (Prefix)
+                     then Spelling_Of (Definition_Of (Prefix)) else "");
                begin
-                  if Arr.Kind = String_Value then
-                     Length := Long_Long_Integer (SU.Length (Arr.Text));
-                  elsif Arr.Kind = Array_Value then
-                     Length := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
-                  else
-                     raise Interpretation_Error with
-                       "'" & Attribute & " requires an array or string value";
+                  --  enumeration type attributes: T'First / T'Last as named values.
+                  if (Attribute = "First" or else Attribute = "Last")
+                    and then Env.Enum_Types.Contains (Prefix_Name)
+                  then
+                     declare
+                        Literals : constant Name_Vectors.Vector :=
+                          Env.Enum_Types.Element (Prefix_Name);
+                        P : constant Positive :=
+                          (if Attribute = "First" then 1
+                           else Positive (Literals.Length));
+                     begin
+                        return (Kind     => Enum_Value,
+                                Pos      => Long_Long_Integer (P - 1),
+                                Lit_Name => SU.To_Unbounded_String (Literals (P)));
+                     end;
                   end if;
-                  if Attribute = "First" then
-                     return Int (1);
-                  else                                  --  Last or Length
-                     return Int (Length);
-                  end if;
+                  --  otherwise array/string bounds (both 1-based: First=1, Last=Length)
+                  declare
+                     Arr : constant Static_Value :=
+                       Evaluate (Prefix, Env, Current);
+                     Length : Long_Long_Integer;
+                  begin
+                     if Arr.Kind = String_Value then
+                        Length := Long_Long_Integer (SU.Length (Arr.Text));
+                     elsif Arr.Kind = Array_Value then
+                        Length := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
+                     else
+                        raise Interpretation_Error with
+                          "'" & Attribute & " requires an array or string value";
+                     end if;
+                     if Attribute = "First" then
+                        return Int (1);
+                     else                                  --  Last or Length
+                        return Int (Length);
+                     end if;
+                  end;
                end;
 
             elsif Attribute = "Old" then

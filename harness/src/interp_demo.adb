@@ -1588,7 +1588,11 @@ procedure Interp_Demo is
                   Attr_Call (Color_Type, Val_Attr, Lit (2)))),
          Print (Attr_Call (Color_Type, Value_Attr, Str_Lit ("Blue"))),  -- Blue
          Print (Attr_Call (Color_Type, Pos_Attr,                      -- 1 ('Value -> pos)
-                  Attr_Call (Color_Type, Value_Attr, Str_Lit ("Green"))))]);
+                  Attr_Call (Color_Type, Value_Attr, Str_Lit ("Green")))),
+         Print (Attr (Add (B.Used_Name (Definition => Color_Type)),   -- Red  (T'First)
+                      First_Attr)),
+         Print (Attr (Add (B.Used_Name (Definition => Color_Type)),   -- Blue (T'Last)
+                      Last_Attr))]);
 
    --  function Double (X : Integer) return Integer
    --     with Pre => X >= 0, Post => Result = X + X is begin return X + X; end;
@@ -3094,9 +3098,10 @@ begin
    Put_Line ("    Put_Line (Color'Val (1)); Put_Line (Color'Succ (Red));");
    Put_Line ("    Put_Line (Color'Pred (Blue)); Put_Line (Color'Pos (Color'Val (2)));");
    Put_Line ("    Put_Line (Color'Value (""Blue"")); Put_Line (Color'Pos (Color'Value (""Green"")));");
+   Put_Line ("    Put_Line (Color'First); Put_Line (Color'Last);");
    New_Line;
    Put_Line ("Output:");
-   Diana.Interpreter.Run (Enum_Attr_Program);   -- Green, Green, Green, 2, Blue, 1
+   Diana.Interpreter.Run (Enum_Attr_Program);   -- Green,Green,Green,2,Blue,1,Red,Blue
 
    --  Runtime contract checks: a pragma Assert that holds, and a subprogram
    --  Pre/Post that hold.
