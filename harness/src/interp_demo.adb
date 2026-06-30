@@ -962,6 +962,22 @@ procedure Interp_Demo is
      (Add (B.Selective_Accept
              (Alternatives => Add (B.Select_Alternative_S (List => NL (Alts))))));
 
+   --  "select Task.Entry (Args); Call_Stmts; else Else_Stmts; end select".
+   function Cond_Entry_Call (Task_Def, Entry_Def : Cursor; Args : Cursor_Array;
+                             Call_Stmts, Else_Stmts : Cursor) return Cursor is
+     (Add (B.Conditional_Entry_Call
+             (Entry_Call      => Entry_Call_Stmt (Task_Def, Entry_Def, Args),
+              Call_Statements => Call_Stmts,
+              Else_Statements => Else_Stmts)));
+   --  "select Task.Entry (Args); Call_Stmts; or delay Secs; Delay_Stmts; end select".
+   function Timed_Entry_Call (Task_Def, Entry_Def : Cursor; Args : Cursor_Array;
+                              Call_Stmts, Secs, Delay_Stmts : Cursor) return Cursor is
+     (Add (B.Timed_Entry_Call
+             (Entry_Call       => Entry_Call_Stmt (Task_Def, Entry_Def, Args),
+              Call_Statements  => Call_Stmts,
+              Delay_Statement  => Delay_For (Secs),
+              Delay_Statements => Delay_Stmts)));
+
    --  conditional expressions: "(if Cond then Then_E else Else_E)" and
    --  "(case Selector is when Choices => Result, ...)".
    function If_Else_Expr (Cond, Then_E, Else_E : Cursor) return Cursor is
@@ -2717,6 +2733,34 @@ procedure Interp_Demo is
        ([Switch_Task],
         [Entry_Call_Stmt (Switch_Def, Off_Entry, [])]);
 
+   --  Conditional entry calls "select Switch.E; ...; else ...; end select".
+   --  Off_Entry's guard (State = 1) is closed while State = 0 -> the else runs;
+   --  On_Entry's guard (State = 0) is open -> the rendezvous runs (1, State:=1).
+   Cond_Select_Program : constant Cursor :=
+     Block_Stmt
+       ([Switch_Task],
+        [Cond_Entry_Call (Switch_Def, Off_Entry, [],            -- guard closed -> else
+            Call_Stmts => Seq ([Print (Lit (30))]),
+            Else_Stmts => Seq ([Print (Lit (40))])),            -- 40
+         Cond_Entry_Call (Switch_Def, On_Entry, [],             -- guard open -> call
+            Call_Stmts => Seq ([Print (Lit (10))]),             -- rendezvous: 1, then 10
+            Else_Stmts => Seq ([Print (Lit (20))]))]);
+
+   --  Timed entry calls "select Switch.E; ...; or delay D; ...; end select".
+   --  Report is unguarded -> the rendezvous runs (prints State = 0), then 70;
+   --  Off_Entry's guard is closed -> the delay "expires" -> the timeout runs.
+   Timed_Select_Program : constant Cursor :=
+     Block_Stmt
+       ([Switch_Task],
+        [Timed_Entry_Call (Switch_Def, Report_Entry, [],        -- acceptable -> call
+            Call_Stmts  => Seq ([Print (Lit (70))]),            -- rendezvous: 0, then 70
+            Secs        => Real_Lit ("1.0"),
+            Delay_Stmts => Seq ([Print (Lit (80))])),
+         Timed_Entry_Call (Switch_Def, Off_Entry, [],           -- closed -> timeout
+            Call_Stmts  => Seq ([Print (Lit (50))]),
+            Secs        => Real_Lit ("1.0"),
+            Delay_Stmts => Seq ([Print (Lit (60))]))]);          -- 60
+
    --  Put_Line ((if 7 > 3 then 7 else 3));   -- 7
    --  Put_Line ((if 2 > 5 then 2 else 5));   -- 5
    --  Put_Line ((case 2 is when 1 => 10, when 2 => 20, when others => 0));  -- 20
@@ -3708,6 +3752,26 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Select_Program);   -- 1, 1, 0
+
+   --  A conditional entry call: take the rendezvous if the entry is acceptable
+   --  now, else the 'else' part (the sequential model never waits).
+   New_Line;
+   Put_Line ("Executing (conditional entry call -- select ... else):");
+   Put_Line ("    select Switch.Turn_Off; Put_Line (30); else Put_Line (40); end select;");
+   Put_Line ("    select Switch.Turn_On;  Put_Line (10); else Put_Line (20); end select;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Cond_Select_Program);   -- 40, then 1, 10
+
+   --  A timed entry call: take the rendezvous if acceptable now, else (the delay
+   --  'expires', since nothing changes while we wait) the delay statements.
+   New_Line;
+   Put_Line ("Executing (timed entry call -- select ... or delay):");
+   Put_Line ("    select Switch.Report;   Put_Line (70); or delay 1.0; Put_Line (80); end select;");
+   Put_Line ("    select Switch.Turn_Off; Put_Line (50); or delay 1.0; Put_Line (60); end select;");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Timed_Select_Program);   -- 0, 70, then 60
 
    --  Conditional expressions: an if-expression and a case-expression evaluate
    --  to the result of the chosen arm/alternative.

@@ -2260,6 +2260,37 @@ package body Diana.Interpreter is
       return 0;
    end Find_Label;
 
+   --  True when an entry call "Task.Entry" can be accepted right now: the prefix
+   --  is a task currently offering that entry with an open guard.  The sequential
+   --  model never waits, so a conditional / timed call that is not acceptable now
+   --  never will be -- it takes its else / timeout branch.
+   function Entry_Acceptable (Call : Cursor; Env : in out Environment;
+                              Current : Positive) return Boolean
+   is
+      Prefix : constant Cursor := As_Entry_Call (Call).Prefix;
+   begin
+      if not Is_Selected_Component (Prefix) then
+         return False;
+      end if;
+      declare
+         Task_Val : constant Static_Value :=
+           Evaluate (As_Selected_Component (Prefix).Prefix, Env, Current);
+         Entry_Nm : constant String :=
+           Spelling_Of (Definition_Of (As_Selected_Component (Prefix).Selector));
+      begin
+         if Task_Val.Kind /= Package_Value
+           or else not Env.Accepts.Contains (Entry_Nm)
+         then
+            return False;
+         elsif Env.Accept_Guards.Contains (Entry_Nm) then
+            return Bool_Of (Evaluate
+              (Env.Accept_Guards.Element (Entry_Nm), Env, Task_Val.Instance));
+         else
+            return True;        --  unguarded accept: always acceptable
+         end if;
+      end;
+   end Entry_Acceptable;
+
    procedure Execute (Stmt : Cursor; Env : in out Environment; Current : Positive) is
    begin
       if Is_Null_Statement (Stmt) then
@@ -2578,6 +2609,28 @@ package body Diana.Interpreter is
                end;
             end;
          end;
+
+      elsif Is_Conditional_Entry_Call (Stmt) then   --  select E; S1; else S2; end select
+         --  if the entry can be accepted now, rendezvous then run the call
+         --  statements; otherwise run the else statements (no waiting).
+         if Entry_Acceptable
+              (As_Conditional_Entry_Call (Stmt).Entry_Call, Env, Current)
+         then
+            Execute (As_Conditional_Entry_Call (Stmt).Entry_Call, Env, Current);
+            Execute (As_Conditional_Entry_Call (Stmt).Call_Statements, Env, Current);
+         else
+            Execute (As_Conditional_Entry_Call (Stmt).Else_Statements, Env, Current);
+         end if;
+
+      elsif Is_Timed_Entry_Call (Stmt) then          --  select E; S1; or delay D; S2;
+         --  acceptable now => rendezvous + call statements; otherwise the delay
+         --  expires (nothing changes while we "wait") => the timeout statements.
+         if Entry_Acceptable (As_Timed_Entry_Call (Stmt).Entry_Call, Env, Current) then
+            Execute (As_Timed_Entry_Call (Stmt).Entry_Call, Env, Current);
+            Execute (As_Timed_Entry_Call (Stmt).Call_Statements, Env, Current);
+         else
+            Execute (As_Timed_Entry_Call (Stmt).Delay_Statements, Env, Current);
+         end if;
 
       elsif Is_If_Statement (Stmt) then
          for Clause of As_Conditional_Clause_S

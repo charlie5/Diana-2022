@@ -172,7 +172,11 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   would block forever single-threaded); and a task **entry call** (`T.E (Args)`)
   rendezvouses with the task's `accept E` body, run synchronously with the call —
   including a **selective accept** (`select accept E1; or accept E2; ... end select`)
-  whose guarded alternatives (`when C =>`) are only callable while their guard is open.
+  whose guarded alternatives (`when C =>`) are only callable while their guard is open,
+  and the two caller-side forms — a **conditional entry call** (`select E; ... else ...`)
+  and a **timed entry call** (`select E; ... or delay D; ...`) — which take the
+  rendezvous when the entry is acceptable now, else the else / timeout branch
+  (the sequential model never waits).
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,
   `Contract_Cases`, and `Subprogram_Variant`; plus bare re-raise and
