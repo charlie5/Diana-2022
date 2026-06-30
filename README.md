@@ -147,7 +147,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   shared state behind operations (procedures mutate it, functions read it); a task
   body runs to completion at activation; a protected **entry** runs only when its
   barrier (over the protected state) is open, else it errors (a closed barrier
-  would block forever single-threaded).
+  would block forever single-threaded); and a task **entry call** (`T.E (Args)`)
+  rendezvouses with the task's `accept E` body, run synchronously with the call.
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,
   `Contract_Cases`, and `Subprogram_Variant`; plus bare re-raise and

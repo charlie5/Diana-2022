@@ -501,6 +501,16 @@ procedure Interp_Demo is
      Add (B.Entry_Name (Spelling => SU.To_Unbounded_String ("Pass")));
    Remaining_Def : constant Cursor :=
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Remaining")));
+   --  rendezvous demo: a task "Accumulator" with an entry "Add (X)", its local
+   --  state "Sum", and the entry parameter "X".
+   Accum_Def : constant Cursor :=
+     Add (B.Task_Body_Name (Spelling => SU.To_Unbounded_String ("Accumulator")));
+   Add_Entry : constant Cursor :=
+     Add (B.Entry_Name (Spelling => SU.To_Unbounded_String ("Add")));
+   Add_X     : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Sum_Acc   : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sum")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -826,6 +836,27 @@ procedure Interp_Demo is
              (Name       => Name_Def,
               Barrier    => Barrier,
               Completion => Body_Block)));
+   --  an "accept Entry (Params) do Body_Stmts end;" and an entry call
+   --  "Task.Entry (Args)".
+   function Accept_Entry (Entry_Def : Cursor; Params : Cursor_Array;
+                          Body_Stmts : Cursor) return Cursor is
+     (Add (B.Accept_Statement
+             (Entry_Name         => Add (B.Used_Name (Definition => Entry_Def)),
+              Parameters         => Add (B.Parameter_S (List => NL (Params))),
+              Handled_Statements => Body_Stmts)));
+   function Entry_Call_Stmt (Task_Def, Entry_Def : Cursor; Args : Cursor_Array)
+     return Cursor is
+      Items : Node_List;
+   begin
+      for A of Args loop
+         Items.Append (Add (B.Positional_Association (Value => A)));
+      end loop;
+      return Add (B.Entry_Call
+        (Prefix  => Add (B.Selected_Component
+           (Prefix   => Add (B.Used_Name (Definition => Task_Def)),
+            Selector => Add (B.Used_Name (Definition => Entry_Def)))),
+         Actuals => Add (B.Association_S (List => Items))));
+   end Entry_Call_Stmt;
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2400,6 +2431,23 @@ procedure Interp_Demo is
        ([Gate_PO],
         [Member_Proc_Call (Gate_Def, Pass_Def, [])]);
 
+   --  task Accumulator is entry Add (X : Integer); end Accumulator;
+   --  task body Accumulator is Sum : Integer := 0;
+   --  begin accept Add (X : Integer) do Sum := Sum + X; Put_Line (Sum); end Add; end;
+   --  Accumulator.Add (10); Accumulator.Add (5); Accumulator.Add (100);
+   --     -- each entry call is a rendezvous running the accept body: 10, 15, 115
+   Rendezvous_Program : constant Cursor :=
+     Block_Stmt
+       ([Task_Unit (Accum_Def,
+           Blk ([Var_Decl (Sum_Acc, Lit (0))],
+                [Accept_Entry (Add_Entry, [In_Par (Add_X)],
+                   Seq ([Assign (Sum_Acc, Bin (Op_Plus, Ref (Sum_Acc),
+                                                Ref (Add_X))),
+                         Print (Ref (Sum_Acc))]))]))],
+        [Entry_Call_Stmt (Accum_Def, Add_Entry, [Lit (10)]),
+         Entry_Call_Stmt (Accum_Def, Add_Entry, [Lit (5)]),
+         Entry_Call_Stmt (Accum_Def, Add_Entry, [Lit (100)])]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3109,6 +3157,19 @@ begin
    Complete (Remaining_Def, Func_Spec ([]),
              Blk ([], [Ret (Ref (Tokens_Def))]));
    Diana.Interpreter.Run (Entry_Open_Program);   -- 1 (opened twice, passed once)
+
+   --  An entry call and rendezvous: each "Accumulator.Add (N)" call rendezvouses
+   --  with the task's "accept Add" body, which runs synchronously with the call
+   --  (the argument bound to the accept's parameter) over the task's local state.
+   New_Line;
+   Put_Line ("Executing (entry call + rendezvous):");
+   Put_Line ("    task Accumulator is entry Add (X : Integer); end Accumulator;");
+   Put_Line ("    task body Accumulator is Sum : Integer := 0;");
+   Put_Line ("       begin accept Add (X) do Sum := Sum + X; Put_Line (Sum); end Add; end;");
+   Put_Line ("    Accumulator.Add (10); Accumulator.Add (5); Accumulator.Add (100);");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Rendezvous_Program);   -- 10, 15, 115
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

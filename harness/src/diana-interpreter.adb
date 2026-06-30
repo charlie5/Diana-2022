@@ -127,6 +127,7 @@ package body Diana.Interpreter is
       Predicates   : Predicate_Maps.Map;             --  predicate/invariant by type name
       Constrained  : Constraint_Maps.Map;            --  variable name -> its type name
       Entries      : Cursor_Maps.Map;                --  protected entry name -> Entry_Body
+      Accepts      : Cursor_Maps.Map;                --  task entry name -> Accept_Statement
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
       Exiting      : Boolean      := False;          --  an exit is in progress
@@ -631,18 +632,46 @@ package body Diana.Interpreter is
          end if;
       end loop;
 
-      --  Activate the declared tasks (after the whole declarative part), running
-      --  each body to completion in a fresh scope — the sequential model of a
-      --  task's thread of control.
+      --  Activate the declared tasks (after the whole declarative part).  A task
+      --  with no entries runs its body to completion (a thread of control,
+      --  sequential here).  A task that offers entries instead keeps a persistent
+      --  scope: its local state is elaborated, its accept bodies are registered
+      --  by entry name, and its name is bound to that scope, so an entry call can
+      --  rendezvous with it (run the matching accept body) — see Entry_Call.
       for T of Task_Bodies loop
          declare
-            Completion : constant Cursor := As_Task_Body (T).Completion;
-            Scope      : constant Positive := Enter (Env, Scope_Index);
+            Completion  : constant Cursor := As_Task_Body (T).Completion;
+            Scope       : constant Positive := Enter (Env, Scope_Index);
+            Has_Accepts : Boolean := False;
          begin
             if Is_Block (Completion) then
-               Run_Block_In (Completion, Env, Scope);
+               declare
+                  Decls : constant Cursor := As_Block (Completion).Declarations;
+                  Stmts : constant Cursor := As_Block (Completion).Statements;
+               begin
+                  if Decls /= No_Element and then Is_Item_S (Decls) then
+                     Elaborate (As_Item_S (Decls).List, Env, Scope);
+                  end if;
+                  if Stmts /= No_Element and then Is_Statement_S (Stmts) then
+                     for S of As_Statement_S (Stmts).List loop
+                        if Is_Accept_Statement (S) then
+                           Env.Accepts.Include
+                             (Spelling_Of (Definition_Of
+                                (As_Accept_Statement (S).Entry_Name)), S);
+                           Has_Accepts := True;
+                        else
+                           Execute (S, Env, Scope);
+                        end if;
+                     end loop;
+                  end if;
+               end;
             end if;
-            Leave (Env, Scope);
+            if Has_Accepts then
+               Define (Env, Scope_Index, Spelling_Of (As_Task_Body (T).Name),
+                       Static_Value'(Kind => Package_Value, Instance => Scope));
+            else
+               Leave (Env, Scope);   --  no entries: the body ran to completion
+            end if;
          end;
       end loop;
    end Elaborate;
@@ -1874,6 +1903,57 @@ package body Diana.Interpreter is
                   end if;
                end;
             end if;
+         end;
+
+      elsif Is_Entry_Call (Stmt) then               --  Task.Entry (Actuals)
+         --  A rendezvous (modelled synchronously): run the task's matching
+         --  accept body, with the accept's parameters bound to the call's
+         --  actuals, in the task's (persistent) scope.
+         declare
+            Prefix  : constant Cursor := As_Entry_Call (Stmt).Prefix;
+            Actuals : constant Node_List :=
+              As_Association_S (As_Entry_Call (Stmt).Actuals).List;
+         begin
+            if not Is_Selected_Component (Prefix) then
+               raise Interpretation_Error with "entry call must name Task.Entry";
+            end if;
+            declare
+               Task_Val : constant Static_Value :=
+                 Evaluate (As_Selected_Component (Prefix).Prefix, Env, Current);
+               Entry_Nm : constant String :=
+                 Spelling_Of (Definition_Of (As_Selected_Component (Prefix).Selector));
+            begin
+               if Task_Val.Kind /= Package_Value then
+                  raise Interpretation_Error with "entry call on a non-task value";
+               elsif not Env.Accepts.Contains (Entry_Nm) then
+                  raise Interpretation_Error with
+                    "task is not accepting entry: " & Entry_Nm;
+               end if;
+               declare
+                  Accept_Node : constant Cursor := Env.Accepts.Element (Entry_Nm);
+                  Params : constant Node_List := As_Parameter_S
+                    (As_Accept_Statement (Accept_Node).Parameters).List;
+                  Rendezvous : constant Positive := Enter (Env, Task_Val.Instance);
+                  J : Natural := 0;
+               begin
+                  --  bind the accept's (in) parameters to the call's actuals
+                  for P of Params loop
+                     if Is_In_Parameter (P) then
+                        for Nm of As_Defining_Name_S
+                                    (As_In_Parameter (P).Names).List
+                        loop
+                           J := J + 1;
+                           Define (Env, Rendezvous, Spelling_Of (Nm),
+                                   Evaluate (As_Positional_Association
+                                     (Actuals (J)).Value, Env, Current));
+                        end loop;
+                     end if;
+                  end loop;
+                  Execute (As_Accept_Statement (Accept_Node).Handled_Statements,
+                           Env, Rendezvous);
+                  Leave (Env, Rendezvous);
+               end;
+            end;
          end;
 
       elsif Is_If_Statement (Stmt) then
