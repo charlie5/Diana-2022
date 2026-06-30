@@ -126,6 +126,7 @@ package body Diana.Interpreter is
       Old_Values   : Value_Maps.Map;                 --  'Old snapshots during a Post check
       Predicates   : Predicate_Maps.Map;             --  predicate/invariant by type name
       Constrained  : Constraint_Maps.Map;            --  variable name -> its type name
+      Entries      : Cursor_Maps.Map;                --  protected entry name -> Entry_Body
       Returning    : Boolean      := False;          --  a return is in progress
       Return_Value : Static_Value := (Kind => No_Value);
       Exiting      : Boolean      := False;          --  an exit is in progress
@@ -623,6 +624,10 @@ package body Diana.Interpreter is
             --  A task: defer its body to activation at the end of this
             --  declarative part (below), then run it to completion.
             Task_Bodies.Append (D);
+         elsif Is_Entry_Body (D) then
+            --  A protected entry: register it by name; a call evaluates its
+            --  barrier (in the protected object's scope) before running the body.
+            Env.Entries.Include (Spelling_Of (As_Entry_Body (D).Name), D);
          end if;
       end loop;
 
@@ -1814,18 +1819,38 @@ package body Diana.Interpreter is
               As_Association_S (As_Procedure_Call (Stmt).Actuals).List;
             Discard : Static_Value;
          begin
-            if Is_Selected_Component (Prefix) then   --  Pkg.Proc / PO.Operation
+            if Is_Selected_Component (Prefix) then   --  Pkg.Proc / PO.Operation / PO.Entry
                declare
                   Pkg : constant Static_Value :=
                     Evaluate (As_Selected_Component (Prefix).Prefix, Env, Current);
                   Sub : constant Cursor :=
                     Definition_Of (As_Selected_Component (Prefix).Selector);
+                  Name : constant String := Spelling_Of (Sub);
                begin
                   if Pkg.Kind /= Package_Value then
                      raise Interpretation_Error with
                        "selected procedure call on a non-package value";
+                  elsif Env.Entries.Contains (Name) then
+                     --  a protected entry: its barrier must be open (the
+                     --  interpreter is sequential, so a closed barrier would
+                     --  block forever — an error), then run its body in the
+                     --  protected object's scope.
+                     declare
+                        E       : constant Cursor := Env.Entries.Element (Name);
+                        Barrier : constant Cursor := As_Entry_Body (E).Barrier;
+                        Scope   : Positive;
+                     begin
+                        if not Bool_Of (Evaluate (Barrier, Env, Pkg.Instance)) then
+                           raise Interpretation_Error with
+                             "protected entry barrier is closed (would block): " & Name;
+                        end if;
+                        Scope := Enter (Env, Pkg.Instance);
+                        Run_Block_In (As_Entry_Body (E).Completion, Env, Scope);
+                        Leave (Env, Scope);
+                     end;
+                  else
+                     Discard := Invoke (Sub, Args, Env, Current, Home => Pkg.Instance);
                   end if;
-                  Discard := Invoke (Sub, Args, Env, Current, Home => Pkg.Instance);
                end;
             else
                declare

@@ -488,6 +488,19 @@ procedure Interp_Demo is
      Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Value")));
    Worker_Def  : constant Cursor :=
      Add (B.Task_Body_Name (Spelling => SU.To_Unbounded_String ("Worker")));
+   --  protected-entry demo: a protected object "Gate" with state "Tokens", a
+   --  procedure "Open_One", an entry "Pass" (barrier Tokens > 0), and a function
+   --  "Remaining".  Calling Pass with the barrier closed (Tokens = 0) errors.
+   Gate_Def    : constant Cursor :=
+     Add (B.Package_Name (Spelling => SU.To_Unbounded_String ("Gate")));
+   Tokens_Def  : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Tokens")));
+   Open_One_Def : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Open_One")));
+   Pass_Def    : constant Cursor :=
+     Add (B.Entry_Name (Spelling => SU.To_Unbounded_String ("Pass")));
+   Remaining_Def : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Remaining")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -807,6 +820,12 @@ procedure Interp_Demo is
               Operations => Add (B.Item_S (List => NL (Operations))))));
    function Task_Unit (Name_Def, Body_Block : Cursor) return Cursor is
      (Add (B.Task_Body (Name => Name_Def, Completion => Body_Block)));
+   --  a protected entry: "entry Name when Barrier is Body_Block".
+   function Protected_Entry (Name_Def, Barrier, Body_Block : Cursor) return Cursor is
+     (Add (B.Entry_Body
+             (Name       => Name_Def,
+              Barrier    => Barrier,
+              Completion => Body_Block)));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2351,6 +2370,36 @@ procedure Interp_Demo is
                      Member_Proc_Call (PO_Counter, Bump_Def, [])]))],
         [Print (Member_Call (PO_Counter, Value_Def, []))]);
 
+   --  protected Gate is procedure Open_One; entry Pass; function Remaining ...;
+   --     private Tokens : Integer := 0; end Gate;
+   --  procedure Open_One is begin Tokens := Tokens + 1; end;
+   --  entry Pass when Tokens > 0 is begin Tokens := Tokens - 1; end;
+   --  function Remaining return Integer is begin return Tokens; end;
+   Gate_PO : constant Cursor :=
+     Protected_Object (Gate_Def,
+       [Var_Decl (Tokens_Def, Lit (0)),
+        Sub_Body_Item (Open_One_Def),
+        Protected_Entry (Pass_Def,
+          Bin (Op_Gt, Ref (Tokens_Def), Lit (0)),       -- barrier: Tokens > 0
+          Blk ([], [Assign (Tokens_Def,
+                            Bin (Op_Minus, Ref (Tokens_Def), Lit (1)))])),
+        Sub_Body_Item (Remaining_Def)]);
+
+   --  Gate.Open_One; Gate.Open_One; Gate.Pass; Put_Line (Gate.Remaining);   -- 1
+   Entry_Open_Program : constant Cursor :=
+     Block_Stmt
+       ([Gate_PO],
+        [Member_Proc_Call (Gate_Def, Open_One_Def, []),
+         Member_Proc_Call (Gate_Def, Open_One_Def, []),
+         Member_Proc_Call (Gate_Def, Pass_Def, []),       -- barrier open (2 > 0)
+         Print (Member_Call (Gate_Def, Remaining_Def, []))]);
+
+   --  Gate.Pass with Tokens = 0 -> the barrier is closed (would block forever)
+   Entry_Closed_Program : constant Cursor :=
+     Block_Stmt
+       ([Gate_PO],
+        [Member_Proc_Call (Gate_Def, Pass_Def, [])]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3044,6 +3093,23 @@ begin
              Blk ([], [Ret (Ref (Count_PO))]));
    Diana.Interpreter.Run (Tasking_Program);
 
+   --  A protected entry with a barrier: "entry Pass when Tokens > 0".  The entry
+   --  proceeds only when its barrier (over the protected state) is open.
+   New_Line;
+   Put_Line ("Executing (protected entry with a barrier):");
+   Put_Line ("    protected Gate is procedure Open_One; entry Pass; function Remaining ...;");
+   Put_Line ("       private Tokens : Integer := 0; end Gate;");
+   Put_Line ("    entry Pass when Tokens > 0 is begin Tokens := Tokens - 1; end;");
+   Put_Line ("    Gate.Open_One; Gate.Open_One; Gate.Pass; Put_Line (Gate.Remaining);");
+   New_Line;
+   Put_Line ("Output:");
+   --  supply the protected subprogram bodies (the entry body is in Gate_PO)
+   Complete (Open_One_Def, Proc_Spec ([]),
+             Blk ([], [Assign (Tokens_Def, Bin (Op_Plus, Ref (Tokens_Def), Lit (1)))]));
+   Complete (Remaining_Def, Func_Spec ([]),
+             Blk ([], [Ret (Ref (Tokens_Def))]));
+   Diana.Interpreter.Run (Entry_Open_Program);   -- 1 (opened twice, passed once)
+
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
    New_Line;
@@ -3140,6 +3206,14 @@ begin
    exception
       when E : Diana.Interpreter.Interpretation_Error =>
          Put_Line ("    'Detached' (is separate) -> "
+                   & Ada.Exceptions.Exception_Message (E));
+   end;
+   begin
+      Diana.Interpreter.Run (Entry_Closed_Program);          -- Gate.Pass, Tokens = 0
+      Put_Line ("    (unexpected) completed without error");
+   exception
+      when E : Diana.Interpreter.Interpretation_Error =>
+         Put_Line ("    'Gate.Pass' (Tokens = 0)  -> "
                    & Ada.Exceptions.Exception_Message (E));
    end;
    begin

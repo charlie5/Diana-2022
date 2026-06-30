@@ -145,7 +145,9 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
 - **Scoping:** a lexical scope chain; locals shadow outer names.
 - **Tasking & protected types** (the single-threaded core): a protected object is
   shared state behind operations (procedures mutate it, functions read it); a task
-  body runs to completion at activation.
+  body runs to completion at activation; a protected **entry** runs only when its
+  barrier (over the protected state) is open, else it errors (a closed barrier
+  would block forever single-threaded).
 - **Contracts** (runtime-checked, raising on violation): `pragma Assert`, `Pre`,
   `Post` (with `'Old` and `'Result`), `Predicate`, `Type_Invariant`,
   `Contract_Cases`, and `Subprogram_Variant`; plus bare re-raise and
