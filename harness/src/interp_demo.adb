@@ -576,6 +576,10 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Box")));
    NC_Mtx       : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Mtx")));
+
+   --  string indexing / slicing / attributes demo variable.
+   Str_Var      : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("S")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -2832,6 +2836,18 @@ procedure Interp_Demo is
            Print (Index_At (Index_At (Ref (NC_Mtx), Lit (1)), Lit (2))),   -- 9
            Print (Index_At (Index_At (Ref (NC_Mtx), Lit (2)), Lit (1)))]); -- 3 (intact)
 
+   --  Strings as 1-based character arrays: 'Length / 'First / 'Last, indexing a
+   --  single character S (I), and slicing a substring S (Low .. High).
+   --  S := "Hello"; Put_Line (S'Length); Put_Line (S (1)); Put_Line (S (2 .. 4));
+   String_Ops_Program : constant Cursor :=
+     Seq ([Assign (Str_Var, Str_Lit ("Hello")),
+           Print (Attr (Ref (Str_Var), Length_Attr)),   -- 5
+           Print (Attr (Ref (Str_Var), First_Attr)),    -- 1
+           Print (Attr (Ref (Str_Var), Last_Attr)),     -- 5
+           Print (Index_At (Ref (Str_Var), Lit (1))),   -- H
+           Print (Index_At (Ref (Str_Var), Lit (5))),   -- o
+           Print (Slice_Of (Ref (Str_Var), 2, 4))]);    -- ell
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3710,6 +3726,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Nested_Assign_Program);   -- 99, 4, 50, 9, 3
+
+   --  Strings as 1-based character arrays: 'Length / 'First / 'Last, indexing,
+   --  and slicing.
+   New_Line;
+   Put_Line ("Executing (string indexing / slicing / attributes):");
+   Put_Line ("    S := ""Hello"";");
+   Put_Line ("    Put_Line (S'Length); Put_Line (S'First); Put_Line (S'Last);");
+   Put_Line ("    Put_Line (S (1)); Put_Line (S (5)); Put_Line (S (2 .. 4));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (String_Ops_Program);   -- 5, 1, 5, H, o, ell
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

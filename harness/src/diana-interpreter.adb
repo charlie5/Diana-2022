@@ -1563,7 +1563,18 @@ package body Diana.Interpreter is
               As_Expression_S (As_Indexed_Component (Expr).Indices).List;
             I : Long_Long_Integer;
          begin
-            if Arr.Kind /= Array_Value then
+            if Arr.Kind = String_Value then            --  S (I) => the I-th character
+               declare
+                  S : constant String := SU.To_String (Arr.Text);
+               begin
+                  I := Whole_Of (Evaluate (Indices (1), Env, Current));
+                  if I < 1 or else I > S'Length then
+                     raise Interpretation_Error with "string index out of range";
+                  end if;
+                  return Str (SU.To_Unbounded_String
+                    (S (Natural (I) .. Natural (I))));
+               end;
+            elsif Arr.Kind /= Array_Value then
                raise Interpretation_Error with "indexing a non-array value";
             end if;
             I := Whole_Of (Evaluate (Indices (1), Env, Current));
@@ -1580,7 +1591,19 @@ package body Diana.Interpreter is
             Low, High : Long_Long_Integer;
             Slice : Value_Vectors.Vector;     --  a fresh (1-based) sub-array
          begin
-            if Arr.Kind /= Array_Value then
+            if Arr.Kind = String_Value then         --  S (Low .. High) => substring
+               declare
+                  S : constant String := SU.To_String (Arr.Text);
+               begin
+                  Eval_Range (As_Slice (Expr).Discrete_Range, Env, Current, Low, High);
+                  if Low < 1 or else High > S'Length then
+                     raise Interpretation_Error with "slice bounds out of range";
+                  elsif Low > High then            --  empty slice
+                     return Str (SU.Null_Unbounded_String);
+                  end if;
+                  return Str (SU.To_Unbounded_String (S (Natural (Low) .. Natural (High))));
+               end;
+            elsif Arr.Kind /= Array_Value then
                raise Interpretation_Error with "slicing a non-array value";
             end if;
             Eval_Range (As_Slice (Expr).Discrete_Range, Env, Current, Low, High);
@@ -1646,17 +1669,20 @@ package body Diana.Interpreter is
             elsif Attribute = "First" or else Attribute = "Last"
               or else Attribute = "Length"
             then
-               --  array bounds (arrays are 1-based: First = 1, Last = Length)
+               --  array/string bounds (both are 1-based: First = 1, Last = Length)
                declare
                   Arr : constant Static_Value :=
                     Evaluate (As_Attribute_Reference (Expr).Prefix, Env, Current);
                   Length : Long_Long_Integer;
                begin
-                  if Arr.Kind /= Array_Value then
+                  if Arr.Kind = String_Value then
+                     Length := Long_Long_Integer (SU.Length (Arr.Text));
+                  elsif Arr.Kind = Array_Value then
+                     Length := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
+                  else
                      raise Interpretation_Error with
-                       "'" & Attribute & " requires an array value";
+                       "'" & Attribute & " requires an array or string value";
                   end if;
-                  Length := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
                   if Attribute = "First" then
                      return Int (1);
                   else                                  --  Last or Length
@@ -2008,16 +2034,19 @@ package body Diana.Interpreter is
         and then Spelling_Of (Definition_Of
                    (As_Attribute_Reference (Discrete_Range).Attribute)) = "Range"
       then
-         --  A'Range == A'First .. A'Last (arrays are 1-based: 1 .. Length)
+         --  A'Range == A'First .. A'Last (arrays and strings are 1-based)
          declare
             Arr : constant Static_Value :=
               Evaluate (As_Attribute_Reference (Discrete_Range).Prefix, Env, Current);
          begin
-            if Arr.Kind /= Array_Value then
-               raise Interpretation_Error with "'Range requires an array value";
+            Low := 1;
+            if Arr.Kind = String_Value then
+               High := Long_Long_Integer (SU.Length (Arr.Text));
+            elsif Arr.Kind = Array_Value then
+               High := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
+            else
+               raise Interpretation_Error with "'Range requires an array or string value";
             end if;
-            Low  := 1;
-            High := Long_Long_Integer (Env.Arrays (Arr.Elements).Length);
          end;
       else
          raise Interpretation_Error with "unsupported discrete range";
