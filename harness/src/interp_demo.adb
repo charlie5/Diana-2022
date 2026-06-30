@@ -603,6 +603,13 @@ procedure Interp_Demo is
    function Str_Lit (S : String) return Cursor is
      (Add (B.String_Literal (Literal_Image => SU.To_Unbounded_String (S))));
 
+   --  a character literal 'C', built as a Used_Character whose defining
+   --  occurrence records the character code in its Representation.
+   function Char_Lit (C : Character) return Cursor is
+     (Add (B.Used_Character (Definition => Add (B.Defining_Character
+             (Spelling       => SU.To_Unbounded_String ("" & C),
+              Representation  => Character'Pos (C))))));
+
    function Ref (Definition : Cursor) return Cursor is
      (Add (B.Used_Object (Definition => Definition)));
 
@@ -2908,6 +2915,14 @@ procedure Interp_Demo is
            Delay_For (Real_Lit ("0.5")),
            Print (Lit (2))]);
 
+   --  Character literals, modelled as one-character strings so they compose with
+   --  string '&' and comparison.
+   --  Put_Line ('A'); Put_Line ('H' & 'i'); Put_Line ('X' = "X");      -- A, Hi, True
+   Char_Lit_Program : constant Cursor :=
+     Seq ([Print (Char_Lit ('A')),                                -- A
+           Print (Bin (Op_Cat, Char_Lit ('H'), Char_Lit ('i'))),  -- Hi
+           Print (Bin (Op_Eq, Char_Lit ('X'), Str_Lit ("X")))]);  -- True
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3836,6 +3851,14 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Delay_Program);   -- 1, 2
+
+   --  Character literals as one-character strings (compose with & and =).
+   New_Line;
+   Put_Line ("Executing (character literals):");
+   Put_Line ("    Put_Line ('A'); Put_Line ('H' & 'i'); Put_Line ('X' = ""X"");");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Char_Lit_Program);   -- A, Hi, True
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

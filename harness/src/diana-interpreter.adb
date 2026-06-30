@@ -1665,6 +1665,16 @@ package body Diana.Interpreter is
       elsif Is_Parenthesized_Expression (Expr) then
          return Evaluate (As_Parenthesized_Expression (Expr).Operand, Env, Current);
 
+      elsif Is_Used_Character (Expr) then
+         --  a character literal, modelled as a one-character string (consistent
+         --  with string indexing, which also yields a one-character string).
+         declare
+            Code : constant Integer :=
+              As_Defining_Character (As_Used_Character (Expr).Definition).Representation;
+         begin
+            return Str (SU.To_Unbounded_String ("" & Character'Val (Code)));
+         end;
+
       elsif Is_Used_Object (Expr) or else Is_Used_Name (Expr) then
          declare
             Def : constant Cursor := Definition_Of (Expr);

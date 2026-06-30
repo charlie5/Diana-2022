@@ -94,7 +94,8 @@ hoisted to the highest applicable class.
 `harness/interp_demo` builds small DIANA programs with `Diana.Builders` and runs
 them through `Diana.Interpreter`. Between them the interpreter covers:
 
-- **Values:** integer, real (with promotion), boolean, string (a 1-based
+- **Values:** integer, real (with promotion), boolean, character literals
+  (`'A'`, as one-character strings), string (a 1-based
   character array: `S'Length`/`'First`/`'Last`/`'Range`, indexing `S (I)`,
   slicing `S (L .. H)`), access
   (`new`, `.all`, `null`, aliasing), `&` concatenation over strings **and
