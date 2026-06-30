@@ -103,7 +103,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   (over an array's elements or a record's components, with the Ada 2022 `when`
   filter), `case` (over integers or enumerations — an enumeration value carries
   its position *and* name, so it compares/iterates as an integer but prints by
-  name), block statements with local
+  name), **conditional expressions** (`if`- and `case`-expressions), block
+  statements with local
   declarations, `exit` (incl. named), `goto` + labels, `raise` + exception
   handlers (incl. `when E : ...` occurrence parameters, bare re-raise, and
   `Exception_Name`/`Exception_Message`), `Put_Line`.

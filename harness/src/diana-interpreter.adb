@@ -505,6 +505,12 @@ package body Diana.Interpreter is
    function Invoke (Definition : Cursor; Actuals : Node_List;
                     Env : in out Environment; Current : Positive;
                     Home : Natural := 0) return Static_Value;
+   --  Case-choice helpers (shared by case statements and case expressions);
+   --  defined below, forward-declared so Evaluate can use them.
+   function Has_Others (Choices : Cursor) return Boolean;
+   function Choice_Matches (Choices : Cursor; Selector : Long_Long_Integer;
+                            Env : in out Environment; Current : Positive)
+     return Boolean;
    procedure Elaborate (Decls : Node_List; Env : in out Environment;
                         Scope_Index : Positive);
    procedure Instantiate_Package (Name, Completion : Cursor;
@@ -1613,6 +1619,47 @@ package body Diana.Interpreter is
             end;
          end;
 
+      elsif Is_If_Expression (Expr) then           --  (if C then A elsif ... else Z)
+         --  return the Result of the first clause whose Condition holds (a Void
+         --  condition is the "else" arm).
+         for Clause of As_Expression_Clause_S
+                         (As_If_Expression (Expr).Clauses).List
+         loop
+            declare
+               Condition : constant Cursor := As_Expression_Clause (Clause).Condition;
+            begin
+               if Condition = No_Element or else Is_Void (Condition)
+                 or else Bool_Of (Evaluate (Condition, Env, Current))
+               then
+                  return Evaluate (As_Expression_Clause (Clause).Result, Env, Current);
+               end if;
+            end;
+         end loop;
+         raise Interpretation_Error with "no arm of the if-expression applies";
+
+      elsif Is_Case_Expression (Expr) then         --  (case S is when ... => R, ...)
+         declare
+            Selector : constant Long_Long_Integer :=
+              Whole_Of (Evaluate (As_Case_Expression (Expr).Selector, Env, Current));
+            Others_Result : Cursor := No_Element;
+         begin
+            for Alt of As_Expression_Alternative_S
+                         (As_Case_Expression (Expr).Alternatives).List
+            loop
+               if Has_Others (As_Expression_Alternative (Alt).Choices) then
+                  Others_Result := As_Expression_Alternative (Alt).Result;
+               elsif Choice_Matches (As_Expression_Alternative (Alt).Choices,
+                                     Selector, Env, Current)
+               then
+                  return Evaluate (As_Expression_Alternative (Alt).Result, Env, Current);
+               end if;
+            end loop;
+            if Others_Result /= No_Element then
+               return Evaluate (Others_Result, Env, Current);
+            end if;
+            raise Interpretation_Error with "no alternative of the case-expression applies";
+         end;
+
       else
          raise Interpretation_Error with "cannot evaluate this expression node";
       end if;
@@ -1630,10 +1677,11 @@ package body Diana.Interpreter is
       end if;
    end Eval_Range;
 
-   --  Does a case alternative carry an "others" choice?
-   function Has_Others (Alt : Cursor) return Boolean is
+   --  Does a choice list (of a case alternative or case-expression alternative)
+   --  carry an "others" choice?
+   function Has_Others (Choices : Cursor) return Boolean is
    begin
-      for C of As_Choice_S (As_Case_Alternative (Alt).Choices).List loop
+      for C of As_Choice_S (Choices).List loop
          if Is_Others_Choice (C) then
             return True;
          end if;
@@ -1642,13 +1690,13 @@ package body Diana.Interpreter is
    end Has_Others;
 
    --  Does any value/range choice of the alternative cover the selector value?
-   function Choice_Matches (Alt : Cursor; Selector : Long_Long_Integer;
+   function Choice_Matches (Choices : Cursor; Selector : Long_Long_Integer;
                             Env : in out Environment; Current : Positive)
      return Boolean
    is
       Low, High : Long_Long_Integer;
    begin
-      for C of As_Choice_S (As_Case_Alternative (Alt).Choices).List loop
+      for C of As_Choice_S (Choices).List loop
          if Is_Choice_Expression (C) then
             if Whole_Of (Evaluate (As_Choice_Expression (C).Value, Env, Current)) = Selector then
                return True;
@@ -2170,9 +2218,11 @@ package body Diana.Interpreter is
                          (As_Case_Statement (Stmt).Alternatives).List
             loop
                if Is_Case_Alternative (Alt) then
-                  if Has_Others (Alt) then
+                  if Has_Others (As_Case_Alternative (Alt).Choices) then
                      Others_Branch := As_Case_Alternative (Alt).Statements;
-                  elsif Choice_Matches (Alt, Selector, Env, Current) then
+                  elsif Choice_Matches (As_Case_Alternative (Alt).Choices,
+                                        Selector, Env, Current)
+                  then
                      Execute (As_Case_Alternative (Alt).Statements, Env, Current);
                      Done := True;
                      exit;

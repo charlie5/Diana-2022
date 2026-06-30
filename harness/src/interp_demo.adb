@@ -876,6 +876,22 @@ procedure Interp_Demo is
    function Select_Accept (Alts : Cursor_Array) return Cursor is
      (Add (B.Selective_Accept
              (Alternatives => Add (B.Select_Alternative_S (List => NL (Alts))))));
+
+   --  conditional expressions: "(if Cond then Then_E else Else_E)" and
+   --  "(case Selector is when Choices => Result, ...)".
+   function If_Else_Expr (Cond, Then_E, Else_E : Cursor) return Cursor is
+     (Add (B.If_Expression (Clauses => Add (B.Expression_Clause_S (List => NL
+        ([Add (B.Expression_Clause (Condition => Cond, Result => Then_E)),
+          Add (B.Expression_Clause (Result => Else_E))]))))));   -- else: no condition
+   function Case_Alt_Expr (Choices : Cursor_Array; Result : Cursor) return Cursor is
+     (Add (B.Expression_Alternative
+             (Choices => Add (B.Choice_S (List => NL (Choices))),
+              Result  => Result)));
+   function Case_Expr (Selector : Cursor; Alternatives : Cursor_Array) return Cursor is
+     (Add (B.Case_Expression
+             (Selector     => Selector,
+              Alternatives => Add (B.Expression_Alternative_S
+                (List => NL (Alternatives))))));
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2503,6 +2519,22 @@ procedure Interp_Demo is
        ([Switch_Task],
         [Entry_Call_Stmt (Switch_Def, Off_Entry, [])]);
 
+   --  Put_Line ((if 7 > 3 then 7 else 3));   -- 7
+   --  Put_Line ((if 2 > 5 then 2 else 5));   -- 5
+   --  Put_Line ((case 2 is when 1 => 10, when 2 => 20, when others => 0));  -- 20
+   --  Put_Line ((case 9 is ... ));                                          -- 0
+   Cond_Expr_Program : constant Cursor :=
+     Seq ([Print (If_Else_Expr (Bin (Op_Gt, Lit (7), Lit (3)), Lit (7), Lit (3))),
+           Print (If_Else_Expr (Bin (Op_Gt, Lit (2), Lit (5)), Lit (2), Lit (5))),
+           Print (Case_Expr (Lit (2),
+             [Case_Alt_Expr ([Val_Choice (1)], Lit (10)),
+              Case_Alt_Expr ([Val_Choice (2)], Lit (20)),
+              Case_Alt_Expr ([Others_Ch], Lit (0))])),
+           Print (Case_Expr (Lit (9),
+             [Case_Alt_Expr ([Val_Choice (1)], Lit (10)),
+              Case_Alt_Expr ([Val_Choice (2)], Lit (20)),
+              Case_Alt_Expr ([Others_Ch], Lit (0))]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3237,6 +3269,17 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Select_Program);   -- 1, 1, 0
+
+   --  Conditional expressions: an if-expression and a case-expression evaluate
+   --  to the result of the chosen arm/alternative.
+   New_Line;
+   Put_Line ("Executing (if- and case-expressions):");
+   Put_Line ("    Put_Line ((if 7 > 3 then 7 else 3));   Put_Line ((if 2 > 5 then 2 else 5));");
+   Put_Line ("    Put_Line ((case 2 is when 1 => 10, when 2 => 20, when others => 0));");
+   Put_Line ("    Put_Line ((case 9 is when 1 => 10, when 2 => 20, when others => 0));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Cond_Expr_Program);   -- 7, 5, 20, 0
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
