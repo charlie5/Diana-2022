@@ -443,6 +443,17 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("W")));
    PD_W        : constant Cursor :=
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("W")));
+   --  abstract-tagged-private-generic-formal-type demo: the formal abstract
+   --  tagged private type "Base", its abstract primitive "Value" (+ parameter),
+   --  and Doubled's parameter (instantiated with a concrete overriding of Value).
+   Base_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Base")));
+   Value_Sub : constant Cursor :=
+     Add (B.Subprogram_Name (Spelling => SU.To_Unbounded_String ("Value")));
+   Value_B   : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   DB_B      : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -733,6 +744,12 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Private_Type (Is_Tagged => True)))));
+   --  a "type Name is abstract tagged private;" generic formal type.
+   function Generic_Abstract_Tagged_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Private_Type
+                (Is_Tagged => True, Is_Abstract => True)))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -2151,6 +2168,37 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Padded_Button, [Lit (10)])),
            Print (Sub_Call (Padded_Icon,   [Lit (10)]))]);
 
+   --  generic
+   --     type Base is abstract tagged private;  -- abstract: actual is concrete
+   --     with function Value (B : Base) return Integer;   -- abstract primitive
+   --  function Doubled (B : Base) return Integer is
+   --  begin return Value (B) * 2; end;
+   Doubled : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Doubled"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Abstract_Tagged_Formal (Base_Type),
+                 Generic_Sub_Formal (Value_Sub, Func_Spec ([In_Par (Value_B)]))]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (DB_B)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Mul,
+               Sub_Call (Value_Sub, [Ref (DB_B)]), Lit (2)))])));
+
+   --  a concrete descendant overrides Value with Circle_Area (3*R*R)
+   --  function Concrete is new Doubled (Integer, Circle_Area);
+   Concrete : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Concrete"),
+             Completion => Instance_Of (Doubled,
+               [Add (B.Used_Name (Definition => Integer_Type)),
+                Add (B.Used_Name (Definition => Circle_Area_Def))])));
+
+   --  Put_Line (Concrete (4));   -- Circle_Area (4) * 2 = 48 * 2 = 96
+   --  Put_Line (Concrete (2));   -- Circle_Area (2) * 2 = 12 * 2 = 24
+   Abstract_Tagged_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Concrete, [Lit (4)])),
+           Print (Sub_Call (Concrete, [Lit (2)]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2777,6 +2825,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Tagged_Private_Formal_Program);
+
+   --  Formal abstract tagged private types: an abstract type has no direct
+   --  objects (the actual is a concrete descendant) and an abstract primitive
+   --  that must be overridden; supplied here via a concrete Value (Circle_Area).
+   New_Line;
+   Put_Line ("Executing (formal abstract tagged private types):");
+   Put_Line ("    generic type Base is abstract tagged private;");
+   Put_Line ("            with function Value (B : Base) return Integer;");
+   Put_Line ("    function Doubled (B : Base) return Integer");
+   Put_Line ("       is begin return Value (B) * 2; end;");
+   Put_Line ("    function Concrete is new Doubled (Integer, Circle_Area);");
+   Put_Line ("    Put_Line (Concrete (4)); Put_Line (Concrete (2));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Abstract_Tagged_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.
