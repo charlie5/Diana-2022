@@ -379,6 +379,23 @@ procedure Interp_Demo is
      Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
    Temp_Type     : constant Cursor :=
      Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Temperature")));
+   --  fixed-point-generic-formal-type demo: an ordinary fixed formal "Fixed_Num"
+   --  (+ Scale's parameter, actual "Meters") and a decimal fixed formal
+   --  "Dec_Num" (+ Combine's parameters, actual "Cash").
+   Fixed_Num_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Fixed_Num")));
+   SC_X        : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("X")));
+   Meters_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Meters")));
+   Dec_Num_Type : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Dec_Num")));
+   CB_A        : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("A")));
+   CB_B        : constant Cursor :=
+     Add (B.Parameter_Name (Spelling => SU.To_Unbounded_String ("B")));
+   Cash_Type   : constant Cursor :=
+     Add (B.Full_Type_Name (Spelling => SU.To_Unbounded_String ("Cash")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -634,6 +651,16 @@ procedure Interp_Demo is
      (Add (B.Generic_Formal_Type_Declaration
              (Name       => Name_Def,
               Definition => Add (B.Formal_Floating_Point))));
+   --  a "type Name is delta <>;" (ordinary) and "delta <> digits <>" (decimal)
+   --  generic formal fixed-point type.
+   function Generic_Ordinary_Fixed_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Ordinary_Fixed))));
+   function Generic_Decimal_Fixed_Formal (Name_Def : Cursor) return Cursor is
+     (Add (B.Generic_Formal_Type_Declaration
+             (Name       => Name_Def,
+              Definition => Add (B.Formal_Decimal_Fixed))));
    function Generic_Sub_Default (Designator, Header, Default_Sub : Cursor)
      return Cursor is
      (Add (B.Generic_Formal_Subprogram
@@ -1882,6 +1909,48 @@ procedure Interp_Demo is
      Seq ([Print (Sub_Call (Avg_Temp, [Real_Lit ("3.0"), Real_Lit ("4.0")])),
            Print (Sub_Call (Avg_Temp, [Real_Lit ("1.5"), Real_Lit ("2.5")]))]);
 
+   --  generic type Fixed_Num is delta <>;            -- ordinary fixed-point
+   --  function Scale (X : Fixed_Num) return Fixed_Num is begin return X * 3.0; end;
+   Scale_Gen : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Scale"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Ordinary_Fixed_Formal (Fixed_Num_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (SC_X)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Mul, Ref (SC_X),
+                                                  Real_Lit ("3.0")))])));
+   --  generic type Dec_Num is delta <> digits <>;    -- decimal fixed-point
+   --  function Combine (A, B : Dec_Num) return Dec_Num is begin return A + B; end;
+   Combine_Gen : constant Cursor :=
+     Add (B.Generic_Name
+            (Spelling      => SU.To_Unbounded_String ("Combine"),
+             Formals       => Add (B.Generic_Formal_S (List => NL
+               ([Generic_Decimal_Fixed_Formal (Dec_Num_Type)]))),
+             Specification => Add (B.Generic_Subprogram_Header
+               (Profile => Func_Spec ([In_Par (CB_A), In_Par (CB_B)]))),
+             Completion    => Blk ([], [Ret (Bin (Op_Plus, Ref (CB_A),
+                                                  Ref (CB_B)))])));
+
+   --  type Meters is delta 0.01;  function Scale_M  is new Scale   (Meters);
+   --  type Cash   is delta 0.01 digits 10;  function Add_Cash is new Combine (Cash);
+   Scale_M : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Scale_M"),
+             Completion => Instance_Of (Scale_Gen,
+               [Add (B.Used_Name (Definition => Meters_Type))])));
+   Add_Cash : constant Cursor :=
+     Add (B.Subprogram_Name
+            (Spelling   => SU.To_Unbounded_String ("Add_Cash"),
+             Completion => Instance_Of (Combine_Gen,
+               [Add (B.Used_Name (Definition => Cash_Type))])));
+
+   --  Put_Line (Scale_M (1.5));            -- 1.5 * 3.0 = 4.5000
+   --  Put_Line (Add_Cash (1.25, 2.5));     -- 1.25 + 2.5 = 3.7500
+   Fixed_Formal_Program : constant Cursor :=
+     Seq ([Print (Sub_Call (Scale_M,  [Real_Lit ("1.5")])),
+           Print (Sub_Call (Add_Cash, [Real_Lit ("1.25"), Real_Lit ("2.5")]))]);
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -2431,6 +2500,21 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Float_Formal_Program);
+
+   --  Formal fixed-point types: an ordinary fixed ("delta <>") and a decimal
+   --  fixed ("delta <> digits <>") formal type; fixed-point values are real, so
+   --  the bodies do real arithmetic; instantiated with concrete fixed types.
+   New_Line;
+   Put_Line ("Executing (formal fixed-point types):");
+   Put_Line ("    generic type Fixed_Num is delta <>;");
+   Put_Line ("    function Scale (X : Fixed_Num) return Fixed_Num is begin return X * 3.0; end;");
+   Put_Line ("    generic type Dec_Num is delta <> digits <>;");
+   Put_Line ("    function Combine (A, B : Dec_Num) return Dec_Num is begin return A + B; end;");
+   Put_Line ("    function Scale_M is new Scale (Meters); function Add_Cash is new Combine (Cash);");
+   Put_Line ("    Put_Line (Scale_M (1.5)); Put_Line (Add_Cash (1.25, 2.5));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Fixed_Formal_Program);
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

@@ -119,7 +119,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   **derived** types (whose inherited parent operations the body uses directly), and
   formal **scalar** types (`range <>`, ordered, so the body compares them;
   `mod <>`, with modular arithmetic; `(<>)`, discrete, accepting enumerations
-  and using `'Pos`; `digits <>`, floating-point, with real arithmetic), formal
+  and using `'Pos`; `digits <>`, floating-point, with real arithmetic; `delta <>`
+  ordinary and `delta <> digits <>` decimal fixed-point), formal
   **access** types (the body
   dereferences with `.all`), and formal
   **array** types (the body indexes and uses `'First`/`'Last`) — and
