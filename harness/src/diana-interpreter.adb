@@ -1770,15 +1770,31 @@ package body Diana.Interpreter is
                   return Real_V (Long_Long_Float'Truncation (Real_Of (Arg_Val)));
                elsif Attribute = "Rounding" then
                   return Real_V (Long_Long_Float'Rounding (Real_Of (Arg_Val)));
-               --  scalar 'Value: parse a string into a number; the target type
-               --  name (the attribute prefix) selects integer vs. real parsing.
+               --  scalar 'Value: parse a string into a value.  An enumeration
+               --  type (its literals known) maps the spelling to the named
+               --  value; otherwise the target type name selects integer vs. real.
                elsif Attribute = "Value" then
                   declare
                      Text : constant String := SU.To_String (Str_Of (Arg_Val));
                      Type_Name : constant String := Spelling_Of
                        (Definition_Of (As_Attribute_Reference (Prefix).Prefix));
                   begin
-                     if Type_Name = "Float" or else Type_Name = "Long_Float"
+                     if Env.Enum_Types.Contains (Type_Name) then
+                        declare
+                           Literals : constant Name_Vectors.Vector :=
+                             Env.Enum_Types.Element (Type_Name);
+                        begin
+                           for P in 1 .. Natural (Literals.Length) loop
+                              if Literals (P) = Text then
+                                 return (Kind     => Enum_Value,
+                                         Pos      => Long_Long_Integer (P - 1),
+                                         Lit_Name => SU.To_Unbounded_String (Text));
+                              end if;
+                           end loop;
+                           raise Interpretation_Error with
+                             "'Value: """ & Text & """ is not a value of " & Type_Name;
+                        end;
+                     elsif Type_Name = "Float" or else Type_Name = "Long_Float"
                        or else Type_Name = "Real"
                      then
                         return Real_V (Long_Long_Float'Value (Text));

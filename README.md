@@ -107,7 +107,8 @@ them through `Diana.Interpreter`. Between them the interpreter covers:
   scalar/enumeration attributes `'Succ`/`'Pred`/`'Pos`/`'Val`/`'Image` (for a
   declared enumeration type, `'Val`/`'Succ`/`'Pred` yield the *named* literal),
   the real attributes `'Floor`/`'Ceiling`/`'Truncation`/`'Rounding`, and the
-  two-argument `'Min`/`'Max`, and `'Value` (parsing a string to a scalar).
+  two-argument `'Min`/`'Max`, and `'Value` (parsing a string to a scalar, or to
+  a named literal for a declared enumeration type).
 - **Statements:** assignment, `if`, `while`, range `for`, container `for ... of`
   (over an array's elements, a record's components, or a string's characters,
   with the Ada 2022 `when` filter), `case` (over integers or enumerations — an enumeration value carries
