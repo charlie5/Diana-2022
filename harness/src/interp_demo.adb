@@ -546,6 +546,11 @@ procedure Interp_Demo is
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Arr")));
    NA_Sparse    : constant Cursor :=
      Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Sparse")));
+
+   --  an unbound variable, used as a short-circuit's Right operand: it raises
+   --  if evaluated, so reaching it proves the short circuit did not occur.
+   SC_Undef     : constant Cursor :=
+     Add (B.Variable_Name (Spelling => SU.To_Unbounded_String ("Not_Evaluated")));
    --  predicate / invariant demo: a subtype, a type, their variables, a field.
    Even_Type    : constant Cursor :=
      Add (B.Subtype_Name (Spelling => SU.To_Unbounded_String ("Even")));
@@ -978,6 +983,15 @@ procedure Interp_Demo is
               Actual  => Value)));
    function Named_Arr (Assocs : Cursor_Array) return Cursor is
      (Add (B.Aggregate (Associations => Add (B.Association_S (List => NL (Assocs))))));
+
+   --  short-circuit control forms "L and then R" / "L or else R", and the two
+   --  boolean literals built from comparisons (no boolean-literal node).
+   function And_Then_Of (L, R : Cursor) return Cursor is
+     (Add (B.Short_Circuit (Left => L, Operator => Add (B.And_Then), Right => R)));
+   function Or_Else_Of (L, R : Cursor) return Cursor is
+     (Add (B.Short_Circuit (Left => L, Operator => Add (B.Or_Else), Right => R)));
+   function Yes return Cursor is (Bin (Op_Gt, Lit (1), Lit (0)));  --  True
+   function No  return Cursor is (Bin (Op_Lt, Lit (1), Lit (0)));  --  False
    function Member_Proc_Call (Object_Def, Proc_Def : Cursor; Args : Cursor_Array)
      return Cursor is
       Items : Node_List;
@@ -2695,6 +2709,17 @@ procedure Interp_Demo is
          Print (Index_At (Ref (NA_Sparse), Lit (2))),    -- 0 (others)
          Print (Index_At (Ref (NA_Sparse), Lit (3)))]);  -- 300
 
+   --  Put_Line (True and then True);  ... ;  Put_Line (False or else False);
+   --  then two short-circuits whose Right is an unbound variable that would
+   --  raise if reached -- so a clean result proves the circuit was short.
+   Short_Circuit_Program : constant Cursor :=
+     Seq ([Print (And_Then_Of (Yes, Yes)),                 -- True
+           Print (And_Then_Of (Yes, No)),                  -- False
+           Print (Or_Else_Of  (No,  Yes)),                 -- True
+           Print (Or_Else_Of  (No,  No)),                  -- False
+           Print (And_Then_Of (No,  Ref (SC_Undef))),      -- False (Right skipped)
+           Print (Or_Else_Of  (Yes, Ref (SC_Undef)))]);    -- True  (Right skipped)
+
    --  Patch a recursive subprogram's stub once its spec and body are built.
    Patch_Spec, Patch_Body : Cursor;
    procedure Apply_Patch (E : in out Node'Class) is
@@ -3511,6 +3536,18 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (Named_Agg_Program);   -- 20, 0, 300
+
+   --  Short-circuit control forms: 'and then' / 'or else', whose Right operand
+   --  is evaluated only when the Left does not already settle the result.
+   New_Line;
+   Put_Line ("Executing (short-circuit and then / or else):");
+   Put_Line ("    Put_Line (True and then True);   Put_Line (True and then False);");
+   Put_Line ("    Put_Line (False or else True);   Put_Line (False or else False);");
+   Put_Line ("    Put_Line (False and then Not_Evaluated);  -- Right is skipped");
+   Put_Line ("    Put_Line (True or else Not_Evaluated);    -- Right is skipped");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (Short_Circuit_Program);   -- True, False, True, False, False, True
 
    --  The execute-or-error requirement: bad executions and failed contracts
    --  must all error out rather than produce a wrong answer.

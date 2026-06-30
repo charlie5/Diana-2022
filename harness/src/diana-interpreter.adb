@@ -1765,6 +1765,22 @@ package body Diana.Interpreter is
             end;
          end;
 
+      elsif Is_Short_Circuit (Expr) then           --  A and then B  /  A or else B
+         --  short-circuit: the Right operand is evaluated only when the Left
+         --  does not already settle the result.
+         declare
+            Left : constant Boolean :=
+              Bool_Of (Evaluate (As_Short_Circuit (Expr).Left, Env, Current));
+         begin
+            if Is_And_Then (As_Short_Circuit (Expr).Operator) then
+               return Bool (Left and then
+                 Bool_Of (Evaluate (As_Short_Circuit (Expr).Right, Env, Current)));
+            else                                    --  or else
+               return Bool (Left or else
+                 Bool_Of (Evaluate (As_Short_Circuit (Expr).Right, Env, Current)));
+            end if;
+         end;
+
       elsif Is_If_Expression (Expr) then           --  (if C then A elsif ... else Z)
          --  return the Result of the first clause whose Condition holds (a Void
          --  condition is the "else" arm).
