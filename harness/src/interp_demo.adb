@@ -2849,6 +2849,20 @@ procedure Interp_Demo is
            Print (Attr_Call_N (Float_Type, Max_Attr,
                     [Real_Lit ("1.5"), Real_Lit ("2.5")]))]);               -- 2.5000
 
+   --  'Min / 'Max also span enumerations (compared by position, kept named) and
+   --  characters (compared lexicographically).
+   --  Color'Min (Green, Red) = Red; Color'Max (Green, Blue) = Blue;
+   --  Character'Min ('a', 'Z') = 'Z'; Character'Max ('a', 'Z') = 'a'.
+   MinMax_Disc_Program : constant Cursor :=
+     Seq ([Print (Attr_Call_N (Color_Type, Min_Attr,
+                    [Ref (Green_Lit), Ref (Red_Lit)])),         -- Red
+           Print (Attr_Call_N (Color_Type, Max_Attr,
+                    [Ref (Green_Lit), Ref (Blue_Lit)])),        -- Blue
+           Print (Attr_Call_N (Char_Type, Min_Attr,
+                    [Char_Lit ('a'), Char_Lit ('Z')])),         -- Z
+           Print (Attr_Call_N (Char_Type, Max_Attr,
+                    [Char_Lit ('a'), Char_Lit ('Z')]))]);       -- a
+
    --  scalar 'Value: parse a string into a number (the prefix type selects
    --  integer vs. real).  Put_Line (Integer'Value ("42"));   etc.
    Value_Attr_Program : constant Cursor :=
@@ -3864,6 +3878,15 @@ begin
    New_Line;
    Put_Line ("Output:");
    Diana.Interpreter.Run (MinMax_Program);   -- 3, 7, 1.5000, 2.5000
+
+   --  'Min / 'Max over enumerations and characters.
+   New_Line;
+   Put_Line ("Executing ('Min / 'Max over enumerations and characters):");
+   Put_Line ("    Put_Line (Color'Min (Green, Red)); Put_Line (Color'Max (Green, Blue));");
+   Put_Line ("    Put_Line (Character'Min ('a', 'Z')); Put_Line (Character'Max ('a', 'Z'));");
+   New_Line;
+   Put_Line ("Output:");
+   Diana.Interpreter.Run (MinMax_Disc_Program);   -- Red, Blue, Z, a
 
    --  scalar 'Value: parse a string into a number.
    New_Line;

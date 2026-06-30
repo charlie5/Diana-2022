@@ -1902,17 +1902,29 @@ package body Diana.Interpreter is
                        "'" & Attribute & " requires two arguments";
                   end if;
                   declare
-                     Second : constant Static_Value :=
+                     Second   : constant Static_Value :=
                        Evaluate (Args (2), Env, Current);
+                     Want_Min : constant Boolean := Attribute = "Min";
                   begin
                      if Arg_Val.Kind = Integer_Value
                        and then Second.Kind = Integer_Value
                      then
-                        return Int (if Attribute = "Min"
+                        return Int (if Want_Min
                                     then Long_Long_Integer'Min (Arg_Val.Whole, Second.Whole)
                                     else Long_Long_Integer'Max (Arg_Val.Whole, Second.Whole));
+                     elsif Arg_Val.Kind = String_Value
+                       and then Second.Kind = String_Value
+                     then
+                        --  characters / strings: keep the lesser / greater operand
+                        return (if Want_Min = SU."<" (Arg_Val.Text, Second.Text)
+                                then Arg_Val else Second);
+                     elsif Is_Discrete (Arg_Val) and then Is_Discrete (Second) then
+                        --  enumerations (compared by position): keep the operand,
+                        --  so a named value stays named.
+                        return (if Want_Min = (Whole_Of (Arg_Val) < Whole_Of (Second))
+                                then Arg_Val else Second);
                      else
-                        return Real_V (if Attribute = "Min"
+                        return Real_V (if Want_Min
                                        then Long_Long_Float'Min (Real_Of (Arg_Val), Real_Of (Second))
                                        else Long_Long_Float'Max (Real_Of (Arg_Val), Real_Of (Second)));
                      end if;
